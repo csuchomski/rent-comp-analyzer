@@ -742,7 +742,7 @@ $("btnSold").onclick = async () => {
   const sq = subjectSqft(), pct = (num(S.arv.sizePct) ?? 25) / 100;
   const payload = { address:S.address, radius:S.arv.radius || 0.5, days:Math.round((S.arv.months || 6) * 30.4),
     // multifamily: no type filter, because county records often label duplexes single-family; sorted below by unit count
-    propertyType: TYPES[S.ptype].units === 1 ? TYPES[S.ptype].api : undefined, minSqft: sq && pct ? Math.round(sq*(1-pct)) : undefined, maxSqft: sq && pct ? Math.round(sq*(1+pct)) : undefined };
+    propertyType: TYPES[S.ptype].units === 1 && !UNITS_ONLY ? TYPES[S.ptype].api : undefined, minSqft: sq && pct ? Math.round(sq*(1-pct)) : undefined, maxSqft: sq && pct ? Math.round(sq*(1+pct)) : undefined };
   const btn = $("btnSold"); btn.disabled = true; $("soldNote").textContent = "Searching recorded sales…";
   try{
     const body = await guarded("sold", payload, "sold homes near " + S.address.split(",")[0]);
@@ -754,23 +754,29 @@ $("btnSold").onclick = async () => {
       return { id: r.id || "s"+i, address: r.formattedAddress, price: s.price, date: s.date, beds: r.bedrooms, baths: r.bathrooms,
         units: Number(r.features?.unitCount) || null,
         sqft: r.squareFootage, yearBuilt: r.yearBuilt, type: r.propertyType, miles: milesBetween(here, {lat:r.latitude, lng:r.longitude}),
-        match: isTypeMatch(r) };
+        };
     }).filter(Boolean).sort((a,b) => (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
     S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload};
     S.arv.use = {}; S.arv.showAll = false;
     const sizeNote = payload.minSqft ? ` Sized ${payload.minSqft.toLocaleString()}–${payload.maxSqft.toLocaleString()} sq ft${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}.` : "";
-    const nMatch = list.filter(x => x.match).length, multi = TYPES[S.ptype].units !== 1;
-    $("soldNote").textContent = (multi ? `${nMatch} multifamily sale${nMatch === 1 ? "" : "s"} out of ${list.length} sales in the area` : `${list.length} sales found`)
+    const nMatch = list.filter(matchSale).length, multi = TYPES[S.ptype].units !== 1;
+    $("soldNote").textContent = (UNITS_ONLY ? `${nMatch} sale${nMatch === 1 ? "" : "s"} with 2+ units out of ${list.length} in the area`
+      : multi ? `${nMatch} multifamily sale${nMatch === 1 ? "" : "s"} out of ${list.length} sales in the area` : `${list.length} sales found`)
       + `${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} Highest $/sq ft first.`;
     renderArv();
   }catch(err){ $("soldNote").textContent = ""; showError(err) }
   finally{ btn.disabled = false }
 };
 
+// TEMPORARY: show only sales whose records list more than one unit, for any property type.
+// Set to false to go back to normal matching.
+const UNITS_ONLY = true;
+
 // Which sales match the subject's kind of property. Multifamily goes by unit count first,
 // since the county's property-type label is often "Single Family" for a duplex.
-function isTypeMatch(r){
-  const units = Number(r.features?.unitCount) || null, t = r.propertyType;
+function matchSale(x){
+  const units = x.units || null, t = x.type;
+  if(UNITS_ONLY) return units > 1;
   if(TYPES[S.ptype].units === 1) return true;
   if(S.ptype === "apartment") return units ? units >= 5 : t === "Apartment";
   return units ? units >= 2 && units <= 4 : t === "Multi-Family";
@@ -778,7 +784,7 @@ function isTypeMatch(r){
 function renderArv(){
   const box = $("arvResults"), A = S.arv;
   if(!A.sold){ box.innerHTML = ""; return }
-  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: x.match ?? true}));
+  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: matchSale(x)}));
   const others = all.filter(x => !x.match).length;
   const list = A.showAll ? all : all.filter(x => x.match || A.use[x.id]);
   const meets = k.price != null && k.maxOffer70 != null ? k.price <= k.maxOffer70 : null;
@@ -787,12 +793,12 @@ function renderArv(){
       <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Built</th><th class="n">Miles</th></tr></thead>
       <tbody>${list.map(s => `<tr class="${A.use[s.id] ? "use" : "skip"}">
         <td><input type="checkbox" aria-label="Use this sale" data-sold="${esc(s.id)}" ${A.use[s.id] ? "checked" : ""}></td>
-        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""}${s.match ? "" : " · not multifamily"}</div>` : ""}</td>
+        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi || UNITS_ONLY ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""}${s.match ? "" : " · not multifamily"}</div>` : ""}</td>
         <td class="n num">${money(s.price)}</td><td>${s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–"}</td>
         <td class="n num">${s.beds ?? "–"}</td><td class="n num">${s.baths ?? "–"}</td><td class="n num">${s.sqft ? s.sqft.toLocaleString() : "–"}</td>
         <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
-    </table></div>` : `<p class="muted" style="margin-top:12px">${k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or a wider size range.</p>`}
-    ${k.multi && others ? `<div class="actions" style="margin-top:8px"><button class="link" id="btnShowOthers">${A.showAll ? "Show multifamily only" : `Show ${others} other sale${others === 1 ? "" : "s"} nearby (not multifamily)`}</button></div>` : ""}
+    </table></div>` : `<p class="muted" style="margin-top:12px">${UNITS_ONLY ? (all.length === 1 ? "The 1 sale in this search isn't" : `None of the ${all.length} sales in this search are`) + " recorded with more than one unit." : k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or a wider size range.</p>`}
+    ${k.multi && others && !UNITS_ONLY ? `<div class="actions" style="margin-top:8px"><button class="link" id="btnShowOthers">${A.showAll ? "Show multifamily only" : `Show ${others} other sale${others === 1 ? "" : "s"} nearby (not multifamily)`}</button></div>` : ""}
     <div class="estimate">
       <div class="stat key"><div class="label">After-repair value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sales · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the finished homes above"}</div></div>
       ${k.multi ? `<div class="stat"><div class="label">Per-unit check</div><div class="v">${money(k.perUnitEst)}</div><div class="small muted">${k.perUnitEst ? `Median ${money(k.medPerUnit)}/unit × ${totalUnits()} units` : "Sales need a unit count"}</div></div>`
