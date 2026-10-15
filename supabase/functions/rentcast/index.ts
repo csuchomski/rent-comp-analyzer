@@ -108,8 +108,11 @@ async function soldNearby(body: Record<string, unknown>) {
   if (!address) return json({ error: "Enter the full street address, city, state and ZIP." }, 400);
   const radius = Math.min(10, Math.max(0.1, Number(body.radius) || 0.5));
   const days = Math.min(1095, Math.max(30, Math.round(Number(body.days) || 180)));
+  // No type filter means "every property type" (used for multifamily, since county records often
+  // label duplexes as single-family); allow the full 500 so a busy town still fits in one call.
   const p: Record<string, unknown> = {
-    address, radius, saleDateRange: `1:${days}`, limit: 200,
+    address, radius, saleDateRange: `1:${days}`,
+    limit: body.propertyType ? 200 : 500,
     propertyType: body.propertyType ? String(body.propertyType) : undefined,
   };
   const minSf = Number(body.minSqft), maxSf = Number(body.maxSqft);
