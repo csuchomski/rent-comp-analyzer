@@ -210,6 +210,7 @@ dialog::backdrop{background:rgba(10,15,12,.5)}
       <div class="field"><label class="label" for="arv_sizePct">Size within (± %)</label><input id="arv_sizePct" type="number" min="0" max="100" step="5"></div>
       <div class="field"><label class="label" for="arv_rehab">Rehab budget</label><input id="arv_rehab" type="number" min="0" step="1000" placeholder="35000"></div>
     </div>
+    <p class="small" id="arvBasis" style="margin:10px 0 0"></p>
     <div class="actions"><button id="btnSold">Find sold homes</button><span class="small muted" id="soldNote">Uses 1 RentCast call. Same settings within 30 days are free.</span></div>
     <div id="arvResults"></div>
   </section>
@@ -337,6 +338,12 @@ function readForm(){
   S.arv = {...blankState().arv, ...(S.arv || {})};
   ARV_FIELDS.forEach(f => { const v = $("arv_" + f).value; S.arv[f] = v === "" ? "" : Number(v) });
   updateLoanPreview();
+  updateArvBasis();
+}
+function updateArvBasis(){
+  const sq = subjectSqft(), pct = (num(S.arv?.sizePct) ?? 25) / 100, multi = TYPES[S.ptype].units !== 1;
+  $("arvBasis").textContent = !sq ? "Enter square footage above to compare sales by size."
+    : `Compares to ${sq.toLocaleString()} sq ft${multi ? " (whole building, all units)" : ""}` + (pct ? `: sales from ${Math.round(sq*(1-pct)).toLocaleString()} to ${Math.round(sq*(1+pct)).toLocaleString()} sq ft.` : ".");
 }
 function updateLoanPreview(){
   const m = mortgage();
@@ -354,6 +361,7 @@ function renderForm(){
   ARV_FIELDS.forEach(f => $("arv_" + f).value = S.arv[f] ?? "");
   renderArv();
   updateLoanPreview();
+  updateArvBasis();
   renderTaxSource();
   const single = TYPES[S.ptype].units === 1;
   $("totalUnitsField").hidden = S.ptype !== "apartment";
@@ -459,6 +467,7 @@ function absorbRecord(rec, source, keepAll=true){
   if(keepAll || !S.record){
     S.record = {
       source, yearBuilt:rec.yearBuilt, lotSize:rec.lotSize, squareFootage:rec.squareFootage,
+      buildingSqft: keepAll ? (rec.squareFootage || null) : null,
       bedrooms:rec.bedrooms, bathrooms:rec.bathrooms, propertyType:rec.propertyType,
       assessedValue:assess?.value ?? null, assessedYear:assess?.year ?? null,
       lastSalePrice:rec.lastSalePrice ?? null, lastSaleDate:rec.lastSaleDate ?? null,
@@ -686,9 +695,12 @@ $("results").addEventListener("click", e => {
 });
 
 // ---- after-repair value ----
+// Whole-property living area, so sold comps are compared building to building.
+// Multifamily: the units added together, unless county records give the building's size.
 function subjectSqft(){
   if(TYPES[S.ptype].units === 1) return S.unitTypes[0].sqft || null;
-  return (S.record && S.record.squareFootage) || (S.unitTypes.every(u => u.sqft) ? S.unitTypes.reduce((t,u)=>t + u.sqft*u.count, 0) : null);
+  const sum = S.unitTypes.every(u => u.sqft) ? S.unitTypes.reduce((t,u)=>t + u.sqft*u.count, 0) : null;
+  return (S.record && S.record.buildingSqft) || sum;
 }
 const round1000 = n => Math.round(n/1000)*1000;
 function milesBetween(a, b){
@@ -736,7 +748,8 @@ $("btnSold").onclick = async () => {
     }).filter(Boolean).sort((a,b) => (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
     S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload};
     S.arv.use = {};
-    $("soldNote").textContent = `${list.length} sales found${body.fromCache ? " (saved search, no call used)" : ""}. Highest $/sq ft first.`;
+    const sizeNote = payload.minSqft ? ` Sized ${payload.minSqft.toLocaleString()}–${payload.maxSqft.toLocaleString()} sq ft${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}.` : "";
+    $("soldNote").textContent = `${list.length} sales found${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} Highest $/sq ft first.`;
     renderArv();
   }catch(err){ $("soldNote").textContent = ""; showError(err) }
   finally{ btn.disabled = false }
