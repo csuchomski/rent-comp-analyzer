@@ -468,6 +468,7 @@ function absorbRecord(rec, source, keepAll=true){
     S.record = {
       source, yearBuilt:rec.yearBuilt, lotSize:rec.lotSize, squareFootage:rec.squareFootage,
       buildingSqft: keepAll ? (rec.squareFootage || null) : null,
+      unitCount: keepAll ? (Number(rec.features?.unitCount) || null) : null,
       bedrooms:rec.bedrooms, bathrooms:rec.bathrooms, propertyType:rec.propertyType,
       assessedValue:assess?.value ?? null, assessedYear:assess?.year ?? null,
       lastSalePrice:rec.lastSalePrice ?? null, lastSaleDate:rec.lastSaleDate ?? null,
@@ -481,11 +482,14 @@ function absorbRecord(rec, source, keepAll=true){
 }
 function renderTaxSource(){
   const n = $("recordNote"); if(!n) return;
+  updateArvBasis();
   if(S.record && S.record.source === "County records"){
     const bits = [];
     if(S.record.assessedValue) bits.push(`assessed ${money(S.record.assessedValue)}${S.record.assessedYear ? " (" + S.record.assessedYear + ")" : ""}`);
     if(S.record.lastSalePrice) bits.push(`last sold ${money(S.record.lastSalePrice)}${S.record.lastSaleDate ? " in " + new Date(S.record.lastSaleDate).getFullYear() : ""}`);
     n.textContent = "Loaded from county records" + (bits.length ? ": " + bits.join(", ") + "." : ".");
+    const uc = S.record.unitCount;
+    if(uc && uc !== totalUnits()) n.textContent += ` County records list ${uc} unit${uc > 1 ? "s" : ""}, but this is set up as ${totalUnits()}. Check the property type.`;
   }
 }
 
@@ -720,10 +724,13 @@ function arvCalc(){
   const psfs = used.filter(s => s.sqft > 0).map(s => s.price / s.sqft);
   const medPsf = median(psfs), subj = subjectSqft();
   const est = used.length ? round1000(medPsf && subj ? medPsf * subj : median(used.map(s => s.price))) : null;
+  const perUnit = used.filter(s => s.units > 0).map(s => s.price / s.units);
+  const multi = TYPES[S.ptype].units !== 1;
+  const perUnitEst = multi && perUnit.length ? round1000(median(perUnit) * totalUnits()) : null;
   const final = num(A.override) ?? est;
   const price = num(S.deal.price), rehab = num(A.rehab);
   const allIn = price != null ? price + (rehab || 0) : null;
-  return { used, medPsf, subj, est, final, price, rehab,
+  return { used, medPsf, subj, est, final, price, rehab, multi, perUnitEst, medPerUnit: median(perUnit),
     low: used.length ? Math.min(...used.map(s => s.price)) : null, high: used.length ? Math.max(...used.map(s => s.price)) : null,
     allIn, equity: final != null && allIn != null ? final - allIn : null,
     maxOffer70: final != null ? round1000(final * 0.7 - (rehab || 0)) : null };
@@ -744,6 +751,7 @@ $("btnSold").onclick = async () => {
     const list = recs.filter(r => normAddr(r.formattedAddress) !== normAddr(S.address)).map((r,i) => {
       const s = lastSale(r); if(!s || !(s.price >= 10000)) return null;   // skips $1 transfers and other non-market deeds
       return { id: r.id || "s"+i, address: r.formattedAddress, price: s.price, date: s.date, beds: r.bedrooms, baths: r.bathrooms,
+        units: Number(r.features?.unitCount) || null,
         sqft: r.squareFootage, yearBuilt: r.yearBuilt, type: r.propertyType, miles: milesBetween(here, {lat:r.latitude, lng:r.longitude}) };
     }).filter(Boolean).sort((a,b) => (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
     S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload};
@@ -762,17 +770,18 @@ function renderArv(){
   const meets = k.price != null && k.maxOffer70 != null ? k.price <= k.maxOffer70 : null;
   box.innerHTML = `
     ${list.length ? `<div class="tablewrap" style="margin-top:14px"><table>
-      <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th><th class="n">Built</th><th class="n">Miles</th></tr></thead>
+      <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Built</th><th class="n">Miles</th></tr></thead>
       <tbody>${list.map(s => `<tr class="${A.use[s.id] ? "use" : "skip"}">
         <td><input type="checkbox" aria-label="Use this sale" data-sold="${esc(s.id)}" ${A.use[s.id] ? "checked" : ""}></td>
         <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a></td>
         <td class="n num">${money(s.price)}</td><td>${s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–"}</td>
         <td class="n num">${s.beds ?? "–"}</td><td class="n num">${s.baths ?? "–"}</td><td class="n num">${s.sqft ? s.sqft.toLocaleString() : "–"}</td>
-        <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td><td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
+        <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
     </table></div>` : `<p class="muted" style="margin-top:12px">No recorded sales matched. Try a bigger radius, a longer time window, or a wider size range.</p>`}
     <div class="estimate">
       <div class="stat key"><div class="label">After-repair value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sales · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the finished homes above"}</div></div>
-      <div class="stat"><div class="label">Selected range</div><div class="v">${k.used.length ? money(k.low) + "–" + money(k.high).slice(1) : "–"}</div><div class="small muted">Sale prices</div></div>
+      ${k.multi ? `<div class="stat"><div class="label">Per-unit check</div><div class="v">${money(k.perUnitEst)}</div><div class="small muted">${k.perUnitEst ? `Median ${money(k.medPerUnit)}/unit × ${totalUnits()} units` : "Sales need a unit count"}</div></div>`
+        : `<div class="stat"><div class="label">Selected range</div><div class="v">${k.used.length ? money(k.low) + "–" + money(k.high).slice(1) : "–"}</div><div class="small muted">Sale prices</div></div>`}
       <div class="stat ${meets == null ? "" : meets ? "pass" : "fail"}"><div class="label">70% rule max offer</div><div class="v">${money(k.maxOffer70)}</div><div class="small">${meets == null ? "70% of ARV minus rehab" : meets ? "Price is at or under it" : `Price is ${money(k.price - k.maxOffer70)} over`}</div></div>
       <div class="stat ${k.equity == null ? "" : k.equity >= 0 ? "pass" : "fail"}"><div class="label">Equity after rehab</div><div class="v">${k.equity == null ? "–" : (k.equity < 0 ? "−" : "") + money(Math.abs(k.equity))}</div><div class="small">${k.allIn != null ? "ARV minus price and rehab (" + money(k.allIn) + ")" : "Enter a price above"}</div></div>
     </div>
@@ -923,14 +932,14 @@ function reportHTML(){
   const m = dealMetrics(total), rec = S.record || {};
   const sumBeds = S.unitTypes.reduce((t,u)=>t + (u.beds||0)*u.count, 0);
   const sumBaths = S.unitTypes.reduce((t,u)=>t + (u.baths||0)*u.count, 0);
-  const sumSqft = S.unitTypes.every(u => u.sqft) ? S.unitTypes.reduce((t,u)=>t + u.sqft*u.count, 0) : null;
+  const sumSqft = subjectSqft();
   const details = [
     ["home", "Property type", TYPES[S.ptype].label, multi ? totalUnits() + " units" : ""],
     ["bed", "Bedrooms", multi ? sumBeds : S.unitTypes[0].beds, multi ? "Total, all units" : ""],
     ["bath", "Bathrooms", multi ? sumBaths : S.unitTypes[0].baths, multi ? "Total, all units" : ""],
-    ["area", "Living area", sumSqft ? sumSqft.toLocaleString() + " sq ft" : "–", multi && sumSqft ? "Total, all units" : ""],
+    ["area", "Living area", sumSqft ? sumSqft.toLocaleString() + " sq ft" : "–", multi && sumSqft ? (S.record?.buildingSqft ? "Building, county records" : "Total, all units") : ""],
     ["calendar", "Year built", S.deal.yearBuilt || "–", S.deal.yearBuilt ? (new Date().getFullYear() - S.deal.yearBuilt) + " years old" : ""],
-    ["tag", "Price", m.price ? money(m.price) : "–", m.price && sumSqft ? money2(m.price/sumSqft) + "/sq ft" : (m.price && multi ? money(m.price/totalUnits()) + " per unit" : "")],
+    ["tag", "Price", m.price ? money(m.price) : "–", m.price ? [sumSqft ? money2(m.price/sumSqft) + "/sq ft" : "", multi ? money(m.price/totalUnits()) + "/unit" : ""].filter(Boolean).join(" · ") : ""],
     ["receipt", "Property taxes", m.taxes != null ? money(m.taxes) + "/yr" : "–", m.taxes != null ? [S.deal.taxYear, S.taxSource === "Entered" ? "Owner entered" : S.taxSource].filter(Boolean).join(" · ") : ""],
     ["shield", "Insurance", m.insurance != null ? money(m.insurance) + "/yr" : "–", m.insurance != null ? money(m.insurance/12) + "/mo · estimate" : ""],
   ];
@@ -963,14 +972,14 @@ function reportHTML(){
   const meets70 = a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null;
   const arvSection = a.final == null ? "" : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">After-repair value</h3>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      ${arvStat("After-repair value", money(a.final), num(S.arv.override) != null ? "Owner's estimate" : `Median ${money2(a.medPsf)}/sq ft of ${a.used.length} sales`)}
+      ${arvStat("After-repair value", money(a.final), (num(S.arv.override) != null ? "Owner's estimate" : `Median ${money2(a.medPsf)}/sq ft of ${a.used.length} sales`) + (a.perUnitEst ? ` · per-unit check ${money(a.perUnitEst)}` : ""))}
       ${arvStat("Rehab budget", a.rehab != null ? money(a.rehab) : "–", a.allIn != null ? "All-in " + money(a.allIn) : "")}
       ${arvStat("Equity after rehab", a.equity == null ? "–" : (a.equity < 0 ? "−" : "") + money(Math.abs(a.equity)), a.equity != null && a.final ? Math.round(a.equity / a.final * 100) + "% of ARV" : "", a.equity == null ? null : a.equity >= 0 ? "#2f6b4f" : "#a3322a")}
       ${arvStat("70% rule max offer", money(a.maxOffer70), meets70 == null ? "70% of ARV minus rehab" : meets70 ? "Price is at or under it" : "Price is " + money(a.price - a.maxOffer70) + " over", meets70 == null ? null : meets70 ? "#2f6b4f" : "#9a5b00")}
     </div>
     ${a.used.length ? `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="color:#5d6b63">${["Sold comparable","Sold","Date","Bd","Ba","Sq ft","$/sq ft"].map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;text-align:${i && i !== 2 ? "right" : "left"}">${h}</th>`).join("")}</tr></thead>
-      <tbody>${a.used.map(s => `<tr>${[esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–", s.beds ?? "–", s.baths ?? "–", s.sqft ? s.sqft.toLocaleString() : "–", s.sqft ? money2(s.price/s.sqft) : "–"].map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;text-align:${i && i !== 2 ? "right" : "left"};${i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
+      <thead><tr style="color:#5d6b63">${["Sold comparable","Sold","Date","Bd","Ba","Sq ft","$/sq ft"].concat(a.multi ? ["Units","$/unit"] : []).map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;text-align:${i && i !== 2 ? "right" : "left"}">${h}</th>`).join("")}</tr></thead>
+      <tbody>${a.used.map(s => `<tr>${[esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–", s.beds ?? "–", s.baths ?? "–", s.sqft ? s.sqft.toLocaleString() : "–", s.sqft ? money2(s.price/s.sqft) : "–"].concat(a.multi ? [s.units ?? "–", s.units ? money(s.price/s.units) : "–"] : []).map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;text-align:${i && i !== 2 ? "right" : "left"};${i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">Recorded sales from public records via RentCast, selected as comparable finished homes.</p>` : ""}`;
   return `<div style="font-family:'Source Sans 3',Arial,sans-serif;color:#1d2722;max-width:820px;margin:0 auto;padding:24px">
     <div style="border-bottom:3px solid #2f6b4f;padding-bottom:10px;margin-bottom:14px">
