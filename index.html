@@ -374,6 +374,24 @@ $("btnNew").onclick = async () => {
   S = blankState(); renderForm(); renderResults();
 };
 
+// Typing a different address means a different property: never let it inherit the last
+// property's saved record, comps, taxes or notes. Unit layout and financing carry over.
+const normAddr = a => String(a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+$("address").addEventListener("change", async () => {
+  const next = $("address").value.trim();
+  const hadProperty = S.id || Object.keys(S.results).length || S.record;
+  if(!S.address || !hadProperty || normAddr(next) === normAddr(S.address)) return;
+  const ok = await ask("Start a new property?",
+    `This clears the comps, price, taxes and notes from ${S.address}. Your unit layout and financing settings stay.${S.id ? " The saved assessment for it is kept." : " Save it first if you want to keep it."}`,
+    "Start new property");
+  if(!ok){ $("address").value = S.address; return }
+  readForm();
+  const keep = {ptype:S.ptype, totalUnits:S.totalUnits, unitTypes:S.unitTypes, options:S.options, adj:S.adj,
+    deal:{...blankState().deal, downPct:S.deal.downPct, rate:S.deal.rate, term:S.deal.term}};
+  S = {...blankState(), ...keep, address:next};
+  renderForm(); renderResults(); $("recordNote").textContent = "Taxes, year built, assessed value and last sale. Uses 1 RentCast call. Anything you've already typed is kept.";
+});
+
 // ---- searching ----
 function reqFor(u){
   const p = { address:S.address, propertyType:TYPES[S.ptype].api, bedrooms:u.beds, bathrooms:u.baths,
@@ -684,6 +702,9 @@ function summary(){
 $("btnSave").onclick = async () => {
   readForm(); S.notes = $("notes").value;
   try{
+    // safety net: a record is only updated when it's still the same address
+    if(S.id && normAddr(S.address) !== normAddr(S.savedAddress)) S.id = null;
+    S.savedAddress = S.address;
     const r = await api("save_assessment", {id:S.id, address:S.address, data:{state:S, summary:summary()}});
     S.id = r.id; $("saveMsg").textContent = "Saved " + new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
   }catch(err){ showError(err) }
@@ -704,7 +725,7 @@ $("btnCloseSaved").onclick = () => $("savedPanel").hidden = true;
 $("savedList").addEventListener("click", async e => {
   const t = e.target;
   if(t.dataset.open){
-    try{ const r = await api("get_assessment", {id:t.dataset.open}); S = {...blankState(), ...r.assessment.data.state, id:r.assessment.id};
+    try{ const r = await api("get_assessment", {id:t.dataset.open}); S = {...blankState(), ...r.assessment.data.state, id:r.assessment.id, savedAddress:r.assessment.address};
       renderForm(); renderResults(); $("savedPanel").hidden = true; window.scrollTo({top:0}) }catch(err){ showError(err) }
   }
   if(t.dataset.del){
