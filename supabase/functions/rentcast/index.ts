@@ -102,6 +102,22 @@ async function propertyRecord(body: Record<string, unknown>) {
   return await guardedCall("properties", p, key, body);
 }
 
+// Recorded sales near the subject, for after-repair value. Ranges use RentCast's "min:max" form.
+async function soldNearby(body: Record<string, unknown>) {
+  const address = String(body.address ?? "").trim();
+  if (!address) return json({ error: "Enter the full street address, city, state and ZIP." }, 400);
+  const radius = Math.min(10, Math.max(0.1, Number(body.radius) || 0.5));
+  const days = Math.min(1095, Math.max(30, Math.round(Number(body.days) || 180)));
+  const p: Record<string, unknown> = {
+    address, radius, saleDateRange: `1:${days}`, limit: 200,
+    propertyType: body.propertyType ? String(body.propertyType) : undefined,
+  };
+  const minSf = Number(body.minSqft), maxSf = Number(body.maxSqft);
+  if (minSf > 0 && maxSf > minSf) p.squareFootage = `${Math.round(minSf)}:${Math.round(maxSf)}`;
+  const key = "sold:" + JSON.stringify([address.toLowerCase().replace(/\s+/g, " "), p.radius, p.saleDateRange, p.propertyType ?? null, p.squareFootage ?? null]);
+  return await guardedCall("properties", p, key, body);
+}
+
 // Every RentCast request goes through here: cache first, then the free-limit guard, then the call.
 async function guardedCall(endpoint: string, p: Record<string, unknown>, key: string, body: Record<string, unknown>) {
   if (!body.forceRefresh) {
@@ -172,6 +188,9 @@ Deno.serve(async (req) => {
       case "property":
         return await propertyRecord(body);
 
+      case "sold":
+        return await soldNearby(body);
+
       case "sync_usage": {
         // Set this period's used count to match the RentCast dashboard.
         const target = Math.max(0, Math.floor(Number(body.used)));
@@ -192,7 +211,7 @@ Deno.serve(async (req) => {
       case "calls": {
         const u = await usage();
         const { data, error } = await db.from("api_calls")
-          .select("called_at, kind, params, http_status, billable_count, overage_confirmed")
+          .select("called_at, kind, endpoint, params, http_status, billable_count, overage_confirmed")
           .gte("called_at", u.periodStart).order("called_at", { ascending: false }).limit(200);
         if (error) throw error;
         return json({ calls: data, usage: u });

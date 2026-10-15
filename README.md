@@ -15,5 +15,6 @@ Pulls comparable rentals from RentCast for a property, lets you pick which comps
 ## RentCast calls
 
 - Rent estimate: 1 call per unit type (comps + RentCast's estimate)
-- County records (taxes, year built, lot size, assessed value, last sale): 1 call
+- County records (taxes, year built, assessed value, last sale): 1 call
+- Sold homes for after-repair value (recorded sales within a radius, time window and size range): 1 call
 - Re-running the same inputs within 30 days uses the saved result and costs nothing
