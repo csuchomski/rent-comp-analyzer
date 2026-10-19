@@ -275,7 +275,7 @@ function blankState(){
     unitTypes:[{key:newKey(), label:"Unit", beds:3, baths:2, sqft:1400, count:1}],
     options:{compCount:15, maxRadius:"", daysOld:""},
     results:{}, adj:{bed:100, bath:50, sqftRate:null}, overrides:{}, notes:"",
-    deal:{price:"", taxes:"", taxYear:"", yearBuilt:"", insurance:"", downPct:25, rate:"", term:30, target:"", returnType:"coc", opexPct:""}, taxSource:"", record:null,
+    deal:{price:"", taxes:"", taxYear:"", yearBuilt:"", insurance:"", downPct:25, rate:"", term:30, target:8, returnType:"coc", opexPct:""}, taxSource:"", record:null,
     arv:{radius:0.5, months:6, sizePct:25, rehab:"", override:"", sold:null, use:{}} };
 }
 const ARV_FIELDS = ["radius","months","sizePct","rehab"];
@@ -896,7 +896,8 @@ function totalRent(){
 // ---- save / load ----
 function summary(){
   const t = totalRent(), m = t ? dealMetrics(t) : null;
-  return {ptype: TYPES[S.ptype].label, units: totalUnits(), totalRent: t, price: m?.price ?? null, onePct: m?.onePct ?? null};
+  return {ptype: TYPES[S.ptype].label, units: totalUnits(), totalRent: t, price: m?.price ?? null, onePct: m?.onePct ?? null,
+    maxOffer: m?.offer > 0 ? m.offer : null, target: m?.target ?? null, returnType: m?.type ?? null};
 }
 $("btnSave").onclick = async () => {
   readForm(); S.notes = $("notes").value;
@@ -914,7 +915,7 @@ async function openSaved(){
   try{
     const r = await api("list_assessments");
     $("savedList").innerHTML = r.assessments.length ? r.assessments.map(a => `<div class="saved-item">
-      <div class="a"><strong>${esc(a.address)}</strong><div class="small muted">${esc(a.summary?.ptype || "")}${a.summary?.totalRent ? " · " + money(a.summary.totalRent) + "/mo" : ""} · updated ${new Date(a.updated_at).toLocaleDateString()}</div></div>
+      <div class="a"><strong>${esc(a.address)}</strong><div class="small muted">${esc(a.summary?.ptype || "")}${a.summary?.totalRent ? " · " + money(a.summary.totalRent) + "/mo" : ""}${a.summary?.maxOffer ? " · max offer " + money(a.summary.maxOffer) : ""} · updated ${new Date(a.updated_at).toLocaleDateString()}</div></div>
       <button data-open="${a.id}">Open</button><button class="link danger" data-del="${a.id}">Delete</button></div>`).join("")
       : `<p class="muted">Nothing saved yet. After you pick comps for a property, press Save assessment and it will show up here.</p>`;
   }catch(err){ $("savedList").innerHTML = ""; showError(err) }
@@ -1017,7 +1018,7 @@ function reportHTML(){
   const cfColor = m.cashFlow == null ? "#1d2722" : m.cashFlow >= 0 ? "#2f6b4f" : "#a3322a";
   const offerOk = m.offer > 0 && m.price != null ? m.price <= m.offer : null;
   const offerColor = !(m.offer > 0) ? "#a3322a" : offerOk == null ? "#1d2722" : offerOk ? "#2f6b4f" : "#9a5b00";
-  const offerBox = m.offer == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${offerColor}">${m.offer > 0 ? money(m.offer) : "None"}</div><div style="font-size:12px;color:${offerColor};font-weight:600">${m.offer > 0 ? `For ${m.target}% ${m.retLabel}` + (offerOk == null ? "" : offerOk ? " · asking fits" : ` · asking ${money(m.price - m.offer)} over`) : `No price reaches ${m.target}%`}</div></div>`;
+  const offerBox = m.offer == null ? `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div style="font:500 22px 'IBM Plex Mono',monospace">–</div><div style="font-size:12px;color:#5d6b63">Needs ${m.offerMissing.join(", ")}</div></div>` : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${offerColor}">${m.offer > 0 ? money(m.offer) : "None"}</div><div style="font-size:12px;color:${offerColor};font-weight:600">${m.offer > 0 ? `For ${m.target}% ${m.retLabel}` + (offerOk == null ? "" : offerOk ? " · asking fits" : ` · asking ${money(m.price - m.offer)} over`) : `No price reaches ${m.target}%`}</div></div>`;
   const cfBox = m.cashFlow == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Est. cash flow</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${cfColor}">${sign(m.cashFlow)}/mo</div><div style="font-size:12px;color:${cfColor};font-weight:600">${m.cashFlow >= 0 ? "Positive" : "Negative"} · ${sign(m.cashFlow*12)}/yr</div></div>`;
   const row = (label, v, strong) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ddd;${strong ? "font-weight:700" : ""}">${label}</td><td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;font-family:'IBM Plex Mono',monospace;${strong ? `font-weight:700;color:${cfColor}` : ""}">${v}</td></tr>`;
   const cashSection = !m.mtg ? "" : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Financing and cash flow</h3>
@@ -1037,7 +1038,8 @@ function reportHTML(){
     <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${m.opexPct ? `Includes ${m.opexPct}% of rent for vacancy, repairs and management. Before capital expenses and any owner-paid utilities.` : "Before vacancy, repairs, capital expenses, management and any owner-paid utilities."}</p>`;
   const a = arvCalc();
   const arvStat = (label, value, sub, color) => `<div style="padding:10px 12px;border:1px solid #d9ded8;border-radius:6px;flex:1 1 160px"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63;font-weight:600">${label}</div><div style="font:500 18px 'IBM Plex Mono',monospace;color:${color || "#1d2722"}">${value}</div>${sub ? `<div style="font-size:11.5px;color:#5d6b63">${sub}</div>` : ""}</div>`;
-  const offerSection = m.offer == null ? "" : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
+  const offerSection = m.offer == null ? `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
+    <p style="font-size:13px;color:#5d6b63;margin:0">A max offer needs ${m.offerMissing.join(", ")}.</p>` : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       ${arvStat("Target", `${m.target}% ${m.retLabel}`, m.type === "cap" ? "Net operating income ÷ (price + rehab)" : "Annual cash flow ÷ (down payment + rehab)")}
       ${arvStat("Max offer", m.offer > 0 ? money(m.offer) : "None", m.offer > 0 ? "Highest price that still reaches the target" : "No price reaches the target at these rents", offerColor)}
