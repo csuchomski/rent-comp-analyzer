@@ -982,7 +982,7 @@ function reportHTML(){
     const k = calc(u); if(!k) return "";
     total += (k.final || 0) * u.count;
     const used = k.used;
-    return `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 6px">${multi ? esc(u.label) + " · " : ""}${u.beds} bd / ${u.baths} ba${u.sqft ? " / " + u.sqft.toLocaleString() + " sq ft" : ""}${multi ? " · " + u.count + " unit" + (u.count>1?"s":"") : ""}</h3>
+    return `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 6px">${multi ? esc(u.label) + " · " : ""}${u.beds} bd / ${u.baths} ba${u.sqft ? " / " + u.sqft.toLocaleString() + " sq ft" : ""}${multi ? " · " + u.count + " unit" + (u.count>1?"s":"") : ""}</h3>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="text-align:left;color:#5d6b63">${["Comparable","Rent","Bd","Ba","Sq ft","$/sq ft","Miles","Adjusted"].map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;${i?"text-align:right":""}">${h}</th>`).join("")}</tr></thead>
         <tbody>${used.map(r => `<tr>${[esc(r.address), money(r.rent), r.beds ?? "–", r.baths ?? "–", r.sqft ? r.sqft.toLocaleString() : "–", r.sqft ? money2(r.rent/r.sqft) : "–", r.distance != null ? r.distance.toFixed(2) : "–", money(r.adjusted)].map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;${i?"text-align:right;font-family:'IBM Plex Mono',monospace":""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
@@ -991,7 +991,7 @@ function reportHTML(){
         <span><b>Suggested rent${multi ? " per unit" : ""}: ${money(k.final)}</b>${k.final !== k.suggested ? " (adjusted by owner)" : ""}</span>
         <span>Comp range: ${money(k.low)}–${money(k.high).slice(1)}</span>
         <span>$/sq ft method: ${money(k.psfEst)}</span>
-        <span>RentCast estimate: ${money(k.avm.rent)}</span></div>`;
+        <span>RentCast estimate: ${money(k.avm.rent)}</span></div></div>`;
   }).join("");
   const date = new Date().toLocaleDateString("en-US", {year:"numeric", month:"long", day:"numeric"});
   const m = dealMetrics(total), rec = S.record || {};
@@ -1010,18 +1010,18 @@ function reportHTML(){
   ];
   if(rec.assessedValue) details.push(["scale", "Assessed value", money(rec.assessedValue), rec.assessedYear ? "Tax year " + rec.assessedYear : ""]);
   if(rec.lastSalePrice) details.push(["history", "Last sale", money(rec.lastSalePrice), rec.lastSaleDate ? new Date(rec.lastSaleDate).toLocaleDateString("en-US", {month:"short", year:"numeric"}) : ""]);
-  const tile = ([icon, label, value, sub]) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d9ded8;border-radius:6px;break-inside:avoid">
+  const tile = ([icon, label, value, sub]) => `<div class="rbox" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid #d9ded8;border-radius:6px;break-inside:avoid">
       ${ICON(icon)}<div style="min-width:0"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63;font-weight:600">${label}</div>
       <div style="font:500 16px 'IBM Plex Mono',monospace;margin-top:1px">${esc(value)}</div>${sub ? `<div style="font-size:11.5px;color:#5d6b63">${esc(sub)}</div>` : ""}</div></div>`;
-  const onePctBox = m.onePct == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">1% rule</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${m.onePct >= 1 ? "#2f6b4f" : "#9a5b00"}">${m.onePct.toFixed(2)}%</div><div style="font-size:12px;color:${m.onePct >= 1 ? "#2f6b4f" : "#9a5b00"};font-weight:600">${m.onePct >= 1 ? "Meets the 1% rule" : "Below 1%: needs " + money(m.rentFor1) + "/mo"}</div></div>`;
+  const onePctBox = m.onePct == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">1% rule</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace;color:${m.onePct >= 1 ? "#2f6b4f" : "#9a5b00"}">${m.onePct.toFixed(2)}%</div><div style="font-size:12px;color:${m.onePct >= 1 ? "#2f6b4f" : "#9a5b00"};font-weight:600">${m.onePct >= 1 ? "Meets the 1% rule" : "Below 1%: needs " + money(m.rentFor1) + "/mo"}</div></div>`;
   const sign = v => (v < 0 ? "−" : "+") + money(Math.abs(v));
   const cfColor = m.cashFlow == null ? "#1d2722" : m.cashFlow >= 0 ? "#2f6b4f" : "#a3322a";
   const offerOk = m.offer > 0 && m.price != null ? m.price <= m.offer : null;
   const offerColor = !(m.offer > 0) ? "#a3322a" : offerOk == null ? "#1d2722" : offerOk ? "#2f6b4f" : "#9a5b00";
-  const offerBox = m.offer == null ? `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div style="font:500 22px 'IBM Plex Mono',monospace">–</div><div style="font-size:12px;color:#5d6b63">Needs ${m.offerMissing.join(", ")}</div></div>` : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${offerColor}">${m.offer > 0 ? money(m.offer) : "None"}</div><div style="font-size:12px;color:${offerColor};font-weight:600">${m.offer > 0 ? `For ${m.target}% ${m.retLabel}` + (offerOk == null ? "" : offerOk ? " · asking fits" : ` · asking ${money(m.price - m.offer)} over`) : `No price reaches ${m.target}%`}</div></div>`;
-  const cfBox = m.cashFlow == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Est. cash flow</div><div style="font:500 22px 'IBM Plex Mono',monospace;color:${cfColor}">${sign(m.cashFlow)}/mo</div><div style="font-size:12px;color:${cfColor};font-weight:600">${m.cashFlow >= 0 ? "Positive" : "Negative"} · ${sign(m.cashFlow*12)}/yr</div></div>`;
+  const offerBox = m.offer == null ? `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace">–</div><div style="font-size:12px;color:#5d6b63">Needs ${m.offerMissing.join(", ")}</div></div>` : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Max offer</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace;color:${offerColor}">${m.offer > 0 ? money(m.offer) : "None"}</div><div style="font-size:12px;color:${offerColor};font-weight:600">${m.offer > 0 ? `For ${m.target}% ${m.retLabel}` + (offerOk == null ? "" : offerOk ? " · asking fits" : ` · asking ${money(m.price - m.offer)} over`) : `No price reaches ${m.target}%`}</div></div>`;
+  const cfBox = m.cashFlow == null ? "" : `<div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Est. cash flow</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace;color:${cfColor}">${sign(m.cashFlow)}/mo</div><div style="font-size:12px;color:${cfColor};font-weight:600">${m.cashFlow >= 0 ? "Positive" : "Negative"} · ${sign(m.cashFlow*12)}/yr</div></div>`;
   const row = (label, v, strong) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ddd;${strong ? "font-weight:700" : ""}">${label}</td><td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;font-family:'IBM Plex Mono',monospace;${strong ? `font-weight:700;color:${cfColor}` : ""}">${v}</td></tr>`;
-  const cashSection = !m.mtg ? "" : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Financing and cash flow</h3>
+  const cashSection = !m.mtg ? "" : `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Financing and cash flow</h3>
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
       <table style="border-collapse:collapse;font-size:13px;flex:1 1 300px;min-width:0">
         ${row("Suggested rent", money(total))}
@@ -1035,49 +1035,63 @@ function reportHTML(){
         Price ${money(m.price)}<br>Down payment ${money(m.mtg.downAmt)} (${m.mtg.down}%)<br>Loan ${money(m.mtg.loan)} at ${m.mtg.rate}%, ${m.mtg.years}-year amortization
       </div>
     </div>
-    <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${m.opexPct ? `Includes ${m.opexPct}% of rent for vacancy, repairs and management. Before capital expenses and any owner-paid utilities.` : "Before vacancy, repairs, capital expenses, management and any owner-paid utilities."}</p>`;
+    <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${m.opexPct ? `Includes ${m.opexPct}% of rent for vacancy, repairs and management. Before capital expenses and any owner-paid utilities.` : "Before vacancy, repairs, capital expenses, management and any owner-paid utilities."}</p></div>`;
   const a = arvCalc();
-  const arvStat = (label, value, sub, color) => `<div style="padding:10px 12px;border:1px solid #d9ded8;border-radius:6px;flex:1 1 160px"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63;font-weight:600">${label}</div><div style="font:500 18px 'IBM Plex Mono',monospace;color:${color || "#1d2722"}">${value}</div>${sub ? `<div style="font-size:11.5px;color:#5d6b63">${sub}</div>` : ""}</div>`;
-  const offerSection = m.offer == null ? `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
-    <p style="font-size:13px;color:#5d6b63;margin:0">A max offer needs ${m.offerMissing.join(", ")}.</p>` : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
+  const arvStat = (label, value, sub, color) => `<div class="rbox" style="padding:10px 12px;border:1px solid #d9ded8;border-radius:6px;flex:1 1 160px"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63;font-weight:600">${label}</div><div style="font:500 18px 'IBM Plex Mono',monospace;color:${color || "#1d2722"}">${value}</div>${sub ? `<div style="font-size:11.5px;color:#5d6b63">${sub}</div>` : ""}</div>`;
+  const offerSection = m.offer == null ? `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
+    <p style="font-size:13px;color:#5d6b63;margin:0">A max offer needs ${m.offerMissing.join(", ")}.</p></div>` : `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Offer at target return</h3>
+    <div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
       ${arvStat("Target", `${m.target}% ${m.retLabel}`, m.type === "cap" ? "Net operating income ÷ (price + rehab)" : "Annual cash flow ÷ (down payment + rehab)")}
       ${arvStat("Max offer", m.offer > 0 ? money(m.offer) : "None", m.offer > 0 ? "Highest price that still reaches the target" : "No price reaches the target at these rents", offerColor)}
       ${arvStat("At asking price", m.nowReturn != null ? pct1(m.nowReturn) : "–", m.price ? money(m.price) : "No price entered")}
       ${arvStat("Net operating income", money(m.noi) + "/yr", "Rent minus taxes, insurance" + (m.opexPct ? ", vacancy, repairs, mgmt" : ""))}
     </div>
-    <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${m.type === "coc" ? `Assumes ${num(S.deal.downPct)}% down and ${num(S.deal.rate)}% over ${num(S.deal.term)} years${m.rehab ? `, with ${money(m.rehab)} of rehab paid in cash` : ""}.` : m.rehab ? `Includes ${money(m.rehab)} of rehab on top of the price.` : "Cap rate leaves out the loan."} Closing costs not included.</p>`;
+    <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${m.type === "coc" ? `Assumes ${num(S.deal.downPct)}% down and ${num(S.deal.rate)}% over ${num(S.deal.term)} years${m.rehab ? `, with ${money(m.rehab)} of rehab paid in cash` : ""}.` : m.rehab ? `Includes ${money(m.rehab)} of rehab on top of the price.` : "Cap rate leaves out the loan."} Closing costs not included.</p></div>`;
   const meets70 = a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null;
-  const arvSection = a.final == null ? "" : `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">After-repair value</h3>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
+  const arvSection = a.final == null ? "" : `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">After-repair value</h3>
+    <div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
       ${arvStat("After-repair value", money(a.final), (num(S.arv.override) != null ? "Owner's estimate" : `Median ${money2(a.medPsf)}/sq ft of ${a.used.length} sales`) + (a.perUnitEst ? ` · per-unit check ${money(a.perUnitEst)}` : ""))}
       ${arvStat("Rehab budget", a.rehab != null ? money(a.rehab) : "–", a.allIn != null ? "All-in " + money(a.allIn) : "")}
       ${arvStat("Equity after rehab", a.equity == null ? "–" : (a.equity < 0 ? "−" : "") + money(Math.abs(a.equity)), a.equity != null && a.final ? Math.round(a.equity / a.final * 100) + "% of ARV" : "", a.equity == null ? null : a.equity >= 0 ? "#2f6b4f" : "#a3322a")}
       ${arvStat("70% rule max offer", money(a.maxOffer70), meets70 == null ? "70% of ARV minus rehab" : meets70 ? "Price is at or under it" : "Price is " + money(a.price - a.maxOffer70) + " over", meets70 == null ? null : meets70 ? "#2f6b4f" : "#9a5b00")}
-    </div>
+    </div></div>
     ${a.used.length ? `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="color:#5d6b63">${["Sold comparable","Sold","Date","Bd","Ba","Sq ft","$/sq ft"].concat(a.multi ? ["Units","$/unit"] : []).map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;text-align:${i && i !== 2 ? "right" : "left"}">${h}</th>`).join("")}</tr></thead>
       <tbody>${a.used.map(s => `<tr>${[esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–", s.beds ?? "–", s.baths ?? "–", s.sqft ? s.sqft.toLocaleString() : "–", s.sqft ? money2(s.price/s.sqft) : "–"].concat(a.multi ? [s.units ?? "–", s.units ? money(s.price/s.units) : "–"] : []).map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;text-align:${i && i !== 2 ? "right" : "left"};${i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
     </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">Recorded sales from public records via RentCast, selected as comparable finished homes.</p>` : ""}`;
-  return `<div style="font-family:'Source Sans 3',Arial,sans-serif;color:#1d2722;max-width:820px;margin:0 auto;padding:24px">
-    <div style="border-bottom:3px solid #2f6b4f;padding-bottom:10px;margin-bottom:14px">
+  return `<div class="rpt" style="font-family:'Source Sans 3',Arial,sans-serif;color:#1d2722;max-width:820px;margin:0 auto;padding:24px">
+    <style>
+      @page { size: auto; margin: 0.5in; }
+      .rpt .rk, .rpt .rbox, .rpt tr { break-inside: avoid; page-break-inside: avoid; }
+      .rpt h3 { break-after: avoid; page-break-after: avoid; }
+      .rpt thead { display: table-header-group; }
+      .rpt th { background: transparent; color: #5d6b63; text-transform: none; letter-spacing: normal; font-size: 12px; font-weight: 600; }
+      .rpt td:first-child, .rpt th:first-child { white-space: normal; }
+      @media print {
+        .rpt { padding: 0 !important; max-width: none !important; }
+        .rpt .row > div { flex: 1 1 0 !important; min-width: 0; }
+        .rpt .band .v { font-size: 19px !important; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    </style>
+    <div class="rk"><div style="border-bottom:3px solid #2f6b4f;padding-bottom:10px;margin-bottom:14px">
       <div style="font:600 11px Archivo,Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#2f6b4f">Rental market assessment</div>
       <div style="font:700 24px Archivo,Arial,sans-serif;margin-top:4px">${esc(S.address)}</div>
       <div style="color:#5d6b63;font-size:13px">${esc(TYPES[S.ptype].label)}${multi ? " · " + totalUnits() + " units" : ""} · Prepared ${date}</div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:4px 8px;background:#e3efe8;border-radius:6px">
-      <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Suggested total rent</div><div style="font:500 22px 'IBM Plex Mono',monospace">${money(total)}/mo</div></div>
-      <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Annual gross</div><div style="font:500 22px 'IBM Plex Mono',monospace">${money(total*12)}</div></div>
+    <div class="row band" style="display:flex;flex-wrap:wrap;gap:4px 8px;background:#e3efe8;border-radius:6px">
+      <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Suggested total rent</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace">${money(total)}/mo</div></div>
+      <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Annual gross</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace">${money(total*12)}</div></div>
       ${onePctBox}${cfBox}${offerBox}
-    </div>
-    <h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Property details</h3>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px">${details.map(tile).join("")}</div>
+    </div></div>
+    <div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Property details</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px">${details.map(tile).join("")}</div></div>
     ${cashSection}
     ${offerSection}
     ${arvSection}
     ${blocks}
-    ${S.notes ? `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 6px">Notes</h3><p style="white-space:pre-wrap;font-size:13px;margin:0">${esc(S.notes)}</p>` : ""}
-    <p style="font-size:11px;color:#5d6b63;margin-top:24px;border-top:1px solid #ddd;padding-top:8px">Method: each selected comparable rental listing is adjusted for differences from the subject (${money(S.adj.bed)} per bedroom, ${money(S.adj.bath)} per bathroom, square footage at a marginal rate), then averaged with closer and more similar comps weighted higher, and rounded to the nearest $25. Comparable listings from RentCast. Estimates are opinions of market rent, not appraisals.</p>
+    ${S.notes ? `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 6px">Notes</h3><p style="white-space:pre-wrap;font-size:13px;margin:0">${esc(S.notes)}</p></div>` : ""}
+    <p class="rk" style="font-size:11px;color:#5d6b63;margin-top:24px;border-top:1px solid #ddd;padding-top:8px">Method: each selected comparable rental listing is adjusted for differences from the subject (${money(S.adj.bed)} per bedroom, ${money(S.adj.bath)} per bathroom, square footage at a marginal rate), then averaged with closer and more similar comps weighted higher, and rounded to the nearest $25. Comparable listings from RentCast. Estimates are opinions of market rent, not appraisals.</p>
   </div>`;
 }
 $("btnPrint").onclick = () => { $("report").innerHTML = reportHTML(); window.print() };
