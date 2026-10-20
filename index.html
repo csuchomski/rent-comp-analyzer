@@ -961,6 +961,8 @@ $("btnConnect").onclick = async () => {
 };
 
 // ---- report ----
+// Max offer is hidden from the report for now (still shown in the app). Set to true to bring it back.
+const SHOW_OFFER_IN_REPORT = false;
 const ICON_PATHS = {
   home:"M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6",
   bed:"M3 18v-7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v7M3 14h18M6 9V7a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2M3 18v2M21 18v2",
@@ -1082,12 +1084,12 @@ function reportHTML(){
     <div class="row band" style="display:flex;flex-wrap:wrap;gap:4px 8px;background:#e3efe8;border-radius:6px">
       <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Suggested total rent</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace">${money(total)}/mo</div></div>
       <div style="padding:14px 12px;flex:1 1 130px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5d6b63">Annual gross</div><div class="v" style="font:500 22px 'IBM Plex Mono',monospace">${money(total*12)}</div></div>
-      ${onePctBox}${cfBox}${offerBox}
+      ${onePctBox}${cfBox}${SHOW_OFFER_IN_REPORT ? offerBox : ""}
     </div></div>
     <div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">Property details</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:8px">${details.map(tile).join("")}</div></div>
     ${cashSection}
-    ${offerSection}
+    ${SHOW_OFFER_IN_REPORT ? offerSection : ""}
     ${arvSection}
     ${blocks}
     ${S.notes ? `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 6px">Notes</h3><p style="white-space:pre-wrap;font-size:13px;margin:0">${esc(S.notes)}</p></div>` : ""}
