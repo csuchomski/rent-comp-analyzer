@@ -117,7 +117,11 @@ async function soldNearby(body: Record<string, unknown>) {
   };
   const minSf = Number(body.minSqft), maxSf = Number(body.maxSqft);
   if (minSf > 0 && maxSf > minSf) p.squareFootage = `${Math.round(minSf)}:${Math.round(maxSf)}`;
-  const key = "sold:" + JSON.stringify([address.toLowerCase().replace(/\s+/g, " "), p.radius, p.saleDateRange, p.propertyType ?? null, p.squareFootage ?? null]);
+  // Optional lot-size range (sq ft). Only sent when the app asks for it.
+  const minLot = Number(body.minLot), maxLot = Number(body.maxLot);
+  if (body.minLot != null && body.maxLot != null && minLot >= 0 && maxLot > minLot) p.lotSize = `${Math.round(minLot)}:${Math.round(maxLot)}`;
+  const key = "sold:" + JSON.stringify([address.toLowerCase().replace(/\s+/g, " "), p.radius, p.saleDateRange, p.propertyType ?? null, p.squareFootage ?? null]
+    .concat(p.lotSize ? [p.lotSize] : []));
   return await guardedCall("properties", p, key, body);
 }
 
