@@ -479,7 +479,7 @@ async function runOne(u, force=false){
     avm:{rent:r.rent, low:r.rentRangeLow, high:r.rentRangeHigh}, comps, status };
   // the rent estimate sometimes carries public-record details for free; use them to fill blanks
   if(r.latitude != null) S.subjectLoc = {lat:r.latitude, lng:r.longitude};
-  if(r.subjectProperty) absorbRecord(r.subjectProperty, "County records", false);
+  if(r.subjectProperty) absorbRecord(r.subjectProperty, "Rent search", false);
   return {fromCache: body.fromCache};
 }
 
@@ -795,13 +795,15 @@ $("btnSold").onclick = async () => {
         sqft: r.squareFootage, lot: Number(r.lotSize) || null, yearBuilt: r.yearBuilt, type: r.propertyType, miles: milesBetween(here, {lat:r.latitude, lng:r.longitude}),
         match: isTypeMatch(r) };
     }).filter(Boolean).sort((a,b) => (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
-    S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload};
+    const cap = payload.propertyType ? 200 : 500;
+    S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload, capped: recs.length >= cap, cap};
     S.arv.use = {}; S.arv.showAll = false;
     const sizeNote = (payload.minSqft ? ` Sized ${payload.minSqft.toLocaleString()}–${payload.maxSqft.toLocaleString()} sq ft${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}.` : "")
       + (payload.minLot != null ? ` Lots ${payload.minLot.toLocaleString()}–${payload.maxLot.toLocaleString()} sq ft.` : "");
-    const nMatch = list.filter(x => x.match).length, multi = TYPES[S.ptype].units !== 1;
-    $("soldNote").textContent = (multi ? `${nMatch} multifamily sale${nMatch === 1 ? "" : "s"} out of ${list.length} sales in the area` : `${list.length} sales found`)
-      + `${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} Highest $/sq ft first.`;
+    const multi = TYPES[S.ptype].units !== 1, same = list.filter(x => unitTier(x) === 0).length, otherMf = list.filter(x => x.match && unitTier(x) > 0).length;
+    const word = UNIT_WORD[totalUnits()] ? UNIT_WORD[totalUnits()] + (same === 1 ? "" : "es") : `${totalUnits()}-unit sale${same === 1 ? "" : "s"}`;
+    $("soldNote").textContent = (multi ? `${same} ${word}${otherMf ? ` and ${otherMf} other multifamily` : ""} out of ${list.length} sales in the area` : `${list.length} sales found`)
+      + `${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} ${multi ? "Same unit count first, then highest" : "Highest"} $/sq ft first.`;
     renderArv();
   }catch(err){ $("soldNote").textContent = ""; showError(err) }
   finally{ btn.disabled = false }
@@ -815,10 +817,24 @@ function isTypeMatch(r){
   if(S.ptype === "apartment") return units ? units >= 5 : t === "Apartment";
   return units ? units >= 2 && units <= 4 : t === "Multi-Family";
 }
+// For multifamily: 0 = same unit count as the subject, 1 = multifamily with no unit count on record,
+// 2 = multifamily with a different unit count, 3 = not multifamily (hidden unless shown).
+function unitTier(x){
+  if(TYPES[S.ptype].units === 1) return 0;
+  if(!x.match) return 3;
+  if(!x.units) return 1;
+  return x.units === totalUnits() ? 0 : 2;
+}
+const UNIT_WORD = {2:"duplex", 3:"triplex", 4:"fourplex"};
+function tierLabel(x){
+  const t = unitTier(x);
+  return t === 0 ? "Same unit count" : t === 1 ? "Unit count not recorded" : t === 2 ? `Different unit count (${x.units})` : "Not multifamily";
+}
 function renderArv(){
   const box = $("arvResults"), A = S.arv;
   if(!A.sold){ box.innerHTML = ""; return }
-  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: x.match ?? true}));
+  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: x.match ?? true}))
+    .sort((a,b) => unitTier(a) - unitTier(b) || (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
   const others = all.filter(x => !x.match).length;
   const list = A.showAll ? all : all.filter(x => x.match || A.use[x.id]);
   const meets = k.price != null && k.maxOffer70 != null ? k.price <= k.maxOffer70 : null;
@@ -827,11 +843,12 @@ function renderArv(){
       <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Lot</th><th class="n">Built</th><th class="n">Miles</th></tr></thead>
       <tbody>${list.map(s => `<tr class="${A.use[s.id] ? "use" : "skip"}">
         <td><input type="checkbox" aria-label="Use this sale" data-sold="${esc(s.id)}" ${A.use[s.id] ? "checked" : ""}></td>
-        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""}${s.match ? "" : " · not multifamily"}</div>` : ""}</td>
+        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""} · <span style="${unitTier(s) === 0 ? "color:var(--good);font-weight:600" : unitTier(s) === 2 ? "color:var(--warn)" : ""}">${tierLabel(s)}</span></div>` : ""}</td>
         <td class="n num">${money(s.price)}</td><td>${s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–"}</td>
         <td class="n num">${s.beds ?? "–"}</td><td class="n num">${s.baths ?? "–"}</td><td class="n num">${s.sqft ? s.sqft.toLocaleString() : "–"}</td>
         <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${s.lot ? (s.lot >= 43560 ? (s.lot/43560).toFixed(2) + " ac" : s.lot.toLocaleString()) : "–"}</td><td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
     </table></div>` : `<p class="muted" style="margin-top:12px">${k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or a wider size range.</p>`}
+    ${A.sold.capped ? `<div class="banner warn" style="margin-top:12px">RentCast returned its limit of ${A.sold.cap} sales for one search, so some sales in this area may be missing. Use a smaller radius or shorter time window to see them all.</div>` : ""}
     ${k.multi && others ? `<div class="actions" style="margin-top:8px"><button class="link" id="btnShowOthers">${A.showAll ? "Show multifamily only" : `Show ${others} other sale${others === 1 ? "" : "s"} nearby (not multifamily)`}</button></div>` : ""}
     <div class="estimate">
       <div class="stat key"><div class="label">After-repair value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sales · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the finished homes above"}</div></div>
