@@ -93,6 +93,17 @@ td.addr a{color:inherit}
 .stat.key{border-color:var(--accent);background:var(--accent-soft)}
 .total{display:flex;flex-wrap:wrap;gap:24px;align-items:baseline;padding:16px 20px;border-radius:8px;background:var(--accent);color:var(--accent-ink);margin-bottom:20px}
 .total .v{font-family:var(--f-mono);font-size:1.8rem;font-variant-numeric:tabular-nums}
+.crit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.crit-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.crit{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:4px 12px;align-items:center;min-width:0}
+.crit.on{border-color:var(--accent);background:var(--accent-soft)}
+.crit-on{display:flex;gap:8px;align-items:center;font-weight:600;cursor:pointer}
+.crit-on input{width:auto;margin:0}
+.crit-in{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.crit-in input{width:6.5em}
+.crit-hint{grid-column:1/-1}
+.crit:not(.on) .crit-in{opacity:.55}
+@media (max-width:700px){.crit-grid{grid-template-columns:1fr}.crit{grid-template-columns:1fr}.crit-in input{width:5.5em}.crit-in{flex-wrap:nowrap}}
 .stat.pass{border-color:var(--good);background:var(--accent-soft)}
 .stat.pass .small{color:var(--good);font-weight:600}
 .stat.fail{border-color:var(--warn);background:var(--warn-soft)}
@@ -214,24 +225,69 @@ dialog::backdrop{background:rgba(10,15,12,.5)}
   <div id="results"></div>
 
   <section class="panel" id="arvPanel">
-    <div class="panel-head"><h2>After-repair value</h2><span class="small muted">Recorded sales near the property. Tick the finished homes you want ARV based on.</span></div>
-    <div class="grid">
-      <div class="field"><label class="label" for="arv_radius">Radius (miles)</label><input id="arv_radius" type="number" min="0.1" max="10" step="0.25"></div>
-      <div class="field"><label class="label" for="arv_months">Sold within (months)</label><input id="arv_months" type="number" min="1" max="36" step="1"></div>
-      <div class="field"><label class="label" for="arv_sizePct">Size within (± %)</label><input id="arv_sizePct" type="number" min="0" max="100" step="5"></div>
-      <div class="field"><label class="label" for="arv_rehab">Rehab budget</label><input id="arv_rehab" type="number" min="0" step="1000" placeholder="35000"></div>
+    <div class="panel-head"><h2>Comparable sales</h2><span class="small muted">Recorded sales near the property. Tick the sales to compare. The Purchase and Flip reports use them.</span></div>
+    <div class="label" style="margin-bottom:8px">Search criteria</div>
+    <div class="crit-grid">
+      <div class="crit-col">
+        <div class="crit" id="critbox_radius">
+          <label class="crit-on" for="crit_radius"><input type="checkbox" id="crit_radius"> Distance</label>
+          <div class="crit-in"><input id="arv_radius" type="number" min="0.1" max="10" step="0.25" aria-label="Radius in miles"><span class="small muted">miles</span></div>
+          <div class="crit-hint small muted" id="hint_radius"></div>
+        </div>
+        <div class="crit" id="critbox_months">
+          <label class="crit-on" for="crit_months"><input type="checkbox" id="crit_months"> Sold within</label>
+          <div class="crit-in"><input id="arv_months" type="number" min="1" max="36" step="1" aria-label="Months"><span class="small muted">months</span></div>
+          <div class="crit-hint small muted" id="hint_months"></div>
+        </div>
+        <div class="crit" id="critbox_size">
+          <label class="crit-on" for="crit_size"><input type="checkbox" id="crit_size"> Size</label>
+          <div class="crit-in"><span class="small muted">±</span><input id="arv_sizePct" type="number" min="1" max="100" step="5" aria-label="Size within percent"><span class="small muted">%</span></div>
+          <div class="crit-hint small muted" id="hint_size"></div>
+        </div>
+        <div class="crit" id="critbox_type">
+          <label class="crit-on" for="crit_type"><input type="checkbox" id="crit_type"> Same property type</label>
+          <div class="crit-in"><span class="small muted" id="typeText"></span></div>
+          <div class="crit-hint small muted" id="hint_type"></div>
+        </div>
+      </div>
+      <div class="crit-col">
+        <div class="crit" id="critbox_beds">
+          <label class="crit-on" for="crit_beds"><input type="checkbox" id="crit_beds"> Bedrooms</label>
+          <div class="crit-in"><span class="small muted">±</span><input id="arv_bedsPm" type="number" min="0" max="5" step="1" aria-label="Bedrooms within"><span class="small muted"></span></div>
+          <div class="crit-hint small muted" id="hint_beds"></div>
+        </div>
+        <div class="crit" id="critbox_baths">
+          <label class="crit-on" for="crit_baths"><input type="checkbox" id="crit_baths"> Bathrooms</label>
+          <div class="crit-in"><span class="small muted">±</span><input id="arv_bathsPm" type="number" min="0" max="5" step="0.5" aria-label="Bathrooms within"><span class="small muted"></span></div>
+          <div class="crit-hint small muted" id="hint_baths"></div>
+        </div>
+        <div class="crit" id="critbox_year">
+          <label class="crit-on" for="crit_year"><input type="checkbox" id="crit_year"> Year built</label>
+          <div class="crit-in"><input id="arv_yearMin" type="number" min="1700" max="2100" step="1" placeholder="From" aria-label="Built from"><span class="small muted">to</span><input id="arv_yearMax" type="number" min="1700" max="2100" step="1" placeholder="To" aria-label="Built to"></div>
+          <div class="crit-hint small muted" id="hint_year"></div>
+        </div>
+        <div class="crit" id="critbox_lot">
+          <label class="crit-on" for="crit_lot"><input type="checkbox" id="crit_lot"> Lot size</label>
+          <div class="crit-in"><input id="arv_lot" type="number" min="0" step="100" aria-label="Subject lot in sq ft"><span class="small muted">sq ft ±</span><input id="arv_lotPct" type="number" min="1" max="500" step="5" aria-label="Lot within percent"><span class="small muted">%</span></div>
+          <div class="crit-hint small muted" id="hint_lot"></div>
+        </div>
+      </div>
     </div>
-    <div class="grid" style="margin-top:12px">
-      <div class="field"><span class="label">Lot size</span>
-        <label for="arv_useLot" style="display:flex;gap:8px;align-items:center;padding-block:9px;cursor:pointer"><input id="arv_useLot" type="checkbox" style="width:auto"> Include in search</label></div>
-      <div class="field"><label class="label" for="arv_lot">Subject lot (sq ft)</label><input id="arv_lot" type="number" min="0" step="100"></div>
-      <div class="field"><label class="label" for="arv_lotPct">Lot within (± %)</label><input id="arv_lotPct" type="number" min="1" max="500" step="5"></div>
-      <div class="field"><label class="label" for="arv_yearMin">Built from (optional)</label><input id="arv_yearMin" type="number" min="1700" max="2100" step="1" placeholder="Any"></div>
-      <div class="field"><label class="label" for="arv_yearMax">Built to (optional)</label><input id="arv_yearMax" type="number" min="1700" max="2100" step="1" placeholder="Any"></div>
-    </div>
-    <p class="small" id="arvBasis" style="margin:10px 0 0"></p>
+    <p class="small" id="arvBasis" style="margin:12px 0 0"></p>
     <div class="actions"><button id="btnSold">Find sold homes</button><span class="small muted" id="soldNote">Uses 1 RentCast call. Same settings within 30 days are free.</span></div>
     <div id="arvResults"></div>
+  </section>
+
+  <section class="panel" id="flipPanel">
+    <div class="panel-head"><h2>Flip analysis</h2><span class="small muted">Uses the value from comparable sales as the after-repair value.</span></div>
+    <div class="grid">
+      <div class="field"><label class="label" for="arv_rehab">Rehab budget</label><input id="arv_rehab" type="number" min="0" step="1000" placeholder="35000"></div>
+      <div class="field"><label class="label" for="flip_sellPct">Selling costs (% of ARV)</label><input id="flip_sellPct" type="number" min="0" max="20" step="0.5"></div>
+      <div class="field"><label class="label" for="flip_holdMonths">Holding period (months)</label><input id="flip_holdMonths" type="number" min="0" max="36" step="1"></div>
+      <div class="field"><label class="label" for="flip_holdMonthly">Holding cost per month</label><input id="flip_holdMonthly" type="number" min="0" step="25"></div>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Selling costs cover agent commission, transfer fee and seller closing costs. Holding cost per month defaults to your loan payment, taxes and insurance from above; add utilities if you'll carry them.</p>
+    <div id="flipResults"></div>
   </section>
 
   <section class="panel" id="wrapPanel" hidden>
@@ -291,9 +347,25 @@ function blankState(){
     options:{compCount:15, maxRadius:"", daysOld:"", yearMin:"", yearMax:""},
     results:{}, adj:{bed:100, bath:50, sqftRate:null}, overrides:{}, notes:"",
     deal:{price:"", taxes:"", taxYear:"", yearBuilt:"", insurance:"", downPct:25, rate:"", term:30, target:8, returnType:"coc", opexPct:""}, taxSource:"", record:null,
-    arv:{radius:0.5, months:6, sizePct:25, rehab:"", override:"", sold:null, use:{}, useLot:false, lot:"", lotPct:50, yearMin:"", yearMax:""}, reportKind:"rental" };
+    arv:{radius:1, months:12, sizePct:25, rehab:"", override:"", sold:null, use:{}, lot:"", lotPct:50, yearMin:"", yearMax:"", bedsPm:1, bathsPm:1,
+      crit:{...DEFAULT_CRIT}},
+    flip:{sellPct:8, holdMonths:6, holdMonthly:""}, reportKind:"rental" };
 }
-const ARV_FIELDS = ["radius","months","sizePct","rehab","lot","lotPct","yearMin","yearMax"];
+const ARV_FIELDS = ["radius","months","sizePct","rehab","lot","lotPct","yearMin","yearMax","bedsPm","bathsPm"];
+const FLIP_FIELDS = ["sellPct","holdMonths","holdMonthly"];
+// Comparable-sales search criteria: on/off. Distance, sale date, size and type are the usual comp
+// screen; beds, baths, year and lot narrow further and drop sales missing those fields, so they start off.
+const CRIT_KEYS = ["radius","months","size","type","beds","baths","year","lot"];
+const DEFAULT_CRIT = {radius:true, months:true, size:true, type:true, beds:false, baths:false, year:false, lot:false};
+function normalizeArv(){
+  const old = S.arv || {};
+  S.arv = {...blankState().arv, ...old};
+  if(!old.crit){   // saves from before the on/off criteria
+    S.arv.crit = {...DEFAULT_CRIT, lot: !!old.useLot, year: num(old.yearMin) != null || num(old.yearMax) != null};
+  } else S.arv.crit = {...DEFAULT_CRIT, ...old.crit};
+  delete S.arv.useLot;
+  S.flip = {...blankState().flip, ...(S.flip || {})};
+}
 const DEAL_FIELDS = ["price","taxes","taxYear","yearBuilt","insurance","downPct","rate","term","target","opexPct"];
 let S = blankState();
 let usage = null;
@@ -361,31 +433,67 @@ function readForm(){
   S.deal = S.deal || {};
   DEAL_FIELDS.forEach(f => { const v = $("deal_" + f).value; S.deal[f] = v === "" ? "" : Number(v) });
   S.deal.returnType = $("deal_returnType").value === "cap" ? "cap" : "coc";
-  S.arv = {...blankState().arv, ...(S.arv || {})};
+  normalizeArv();
   ARV_FIELDS.forEach(f => { const v = $("arv_" + f).value; S.arv[f] = v === "" ? "" : Number(v) });
-  S.arv.useLot = $("arv_useLot").checked;
+  CRIT_KEYS.forEach(k => S.arv.crit[k] = $("crit_" + k).checked);
+  FLIP_FIELDS.forEach(f => { const v = $("flip_" + f).value; S.flip[f] = v === "" ? "" : Number(v) });
   updateLoanPreview();
   updateArvBasis();
+  renderFlip();
 }
 // Subject lot: what's typed, else the county record's lot size.
 function subjectLot(){ return num(S.arv?.lot) ?? (Number(S.record?.lotSize) || null) }
 function lotRange(){
   const lot = subjectLot(), pct = (num(S.arv?.lotPct) ?? 50) / 100;
-  return S.arv?.useLot && lot && pct > 0 ? {lot, min: Math.round(lot * Math.max(0, 1 - pct)), max: Math.round(lot * (1 + pct))} : null;
+  return S.arv?.crit?.lot && lot && pct > 0 ? {lot, min: Math.round(lot * Math.max(0, 1 - pct)), max: Math.round(lot * (1 + pct))} : null;
+}
+// Whole-property bedrooms and bathrooms (all units added together for multifamily), to match sold records.
+function subjectBedsBaths(){
+  const beds = S.unitTypes.reduce((t,u) => t + (num(u.beds) || 0) * u.count, 0);
+  const baths = S.unitTypes.reduce((t,u) => t + (num(u.baths) || 0) * u.count, 0);
+  return {beds: beds || null, baths: baths || null};
+}
+// The criteria as they'd be sent now, with a plain-language line for each.
+function soldCriteria(){
+  const c = S.arv.crit, multi = TYPES[S.ptype].units !== 1, out = {}, hints = {};
+  const sq = subjectSqft(), pct = (num(S.arv.sizePct) ?? 25) / 100, sb = subjectBedsBaths();
+  out.radius = c.radius ? (num(S.arv.radius) || 1) : 10;
+  hints.radius = c.radius ? `Within ${out.radius} mile${out.radius === 1 ? "" : "s"} of the property.` : "Off: up to 10 miles, RentCast's limit.";
+  const months = c.months ? (num(S.arv.months) || 12) : 36;
+  out.days = Math.round(months * 30.4);
+  hints.months = c.months ? `Sales in the last ${months} month${months === 1 ? "" : "s"}.` : "Off: sales in the last 3 years.";
+  if(c.size && sq && pct > 0){ out.minSqft = Math.round(sq * (1 - pct)); out.maxSqft = Math.round(sq * (1 + pct)) }
+  hints.size = !c.size ? "Off: any size." : !sq ? "Enter square footage above to match on size." : `${out.minSqft.toLocaleString()}–${out.maxSqft.toLocaleString()} sq ft, based on ${sq.toLocaleString()}${multi ? " (whole building)" : ""}.`;
+  out.propertyType = c.type && !multi ? TYPES[S.ptype].api : undefined;
+  hints.type = !c.type ? "Off: every property type is shown." : multi ? `Shows 2+ unit properties, same unit count first. Pulls every type, since counties often record duplexes as single-family.` : `Only ${TYPES[S.ptype].label.toLowerCase()} sales.`;
+  const bpm = num(S.arv.bedsPm) ?? 1, tpm = num(S.arv.bathsPm) ?? 1;
+  if(c.beds && sb.beds){ out.bedsMin = Math.max(0, sb.beds - bpm); out.bedsMax = sb.beds + bpm }
+  hints.beds = !c.beds ? "Off." : !sb.beds ? "Enter bedrooms above to match on them." : `${out.bedsMin}–${out.bedsMax} bedrooms${multi ? " in the whole building" : ""}. Sales with no bedroom count are left out.`;
+  if(c.baths && sb.baths){ out.bathsMin = Math.max(0, sb.baths - tpm); out.bathsMax = sb.baths + tpm }
+  hints.baths = !c.baths ? "Off." : !sb.baths ? "Enter bathrooms above to match on them." : `${out.bathsMin}–${out.bathsMax} bathrooms${multi ? " in the whole building" : ""}. Sales with no bathroom count are left out.`;
+  const yr = c.year ? yearRange(S.arv.yearMin, S.arv.yearMax) : null;
+  if(yr){ out.yearMin = yr.lo ?? 1700; out.yearMax = yr.hi ?? new Date().getFullYear() + 1; out.yearText = yr.text }
+  hints.year = !c.year ? "Off." : !yr ? "Enter a from year, a to year, or both." : `Built ${yr.text}. Sales with no year on record are left out.`;
+  const lr = lotRange();
+  if(lr){ out.minLot = lr.min; out.maxLot = lr.max }
+  hints.lot = !c.lot ? "Off." : !lr ? "Enter the lot size, or fill from county records." : `${lr.min.toLocaleString()}–${lr.max.toLocaleString()} sq ft (${(lr.min/43560).toFixed(2)}–${(lr.max/43560).toFixed(2)} acres). Sales with no lot size are left out.`;
+  const missing = (c.year && !yr) ? "year" : (c.lot && !lr) ? "lot" : null;
+  return {out, hints, missing};
 }
 function updateArvBasis(){
-  const sq = subjectSqft(), pct = (num(S.arv?.sizePct) ?? 25) / 100, multi = TYPES[S.ptype].units !== 1;
-  const sizeText = !sq ? "Enter square footage above to compare sales by size."
-    : `Compares to ${sq.toLocaleString()} sq ft${multi ? " (whole building, all units)" : ""}` + (pct ? `: sales from ${Math.round(sq*(1-pct)).toLocaleString()} to ${Math.round(sq*(1+pct)).toLocaleString()} sq ft.` : ".");
+  if(!S.arv?.crit) return;
+  const {hints} = soldCriteria(), multi = TYPES[S.ptype].units !== 1;
+  CRIT_KEYS.forEach(k => {
+    const on = !!S.arv.crit[k];
+    $("critbox_" + k).classList.toggle("on", on);
+    $("critbox_" + k).querySelectorAll(".crit-in input").forEach(el => el.disabled = !on);
+    $("hint_" + k).textContent = hints[k];
+  });
+  $("typeText").textContent = multi ? "2+ units" : TYPES[S.ptype].label;
   const recLot = Number(S.record?.lotSize) || null;
-  $("arv_lot").placeholder = recLot ? recLot.toLocaleString() + " (county)" : "10890";
-  $("arv_lot").disabled = $("arv_lotPct").disabled = !S.arv?.useLot;
-  const lr = lotRange();
-  const lotText = !S.arv?.useLot ? "" : lr ? ` Lots from ${lr.min.toLocaleString()} to ${lr.max.toLocaleString()} sq ft (${(lr.min/43560).toFixed(2)}–${(lr.max/43560).toFixed(2)} acres).`
-    : " Enter the lot size, or fill from county records, to match on it.";
-  const yr = yearRange(S.arv?.yearMin, S.arv?.yearMax);
-  const yearText = yr ? ` Built ${yr.text}; sales with no year on record are left out.` : "";
-  $("arvBasis").textContent = sizeText + lotText + yearText;
+  $("arv_lot").placeholder = recLot ? recLot.toLocaleString() : "10890";
+  const nOn = CRIT_KEYS.filter(k => S.arv.crit[k]).length;
+  $("arvBasis").textContent = `${nOn} of ${CRIT_KEYS.length} criteria on. Changes apply the next time you search.`;
 }
 function updateLoanPreview(){
   const m = mortgage();
@@ -403,9 +511,10 @@ function renderForm(){
   S.deal = {...blankState().deal, ...(S.deal || {})};
   DEAL_FIELDS.forEach(f => $("deal_" + f).value = S.deal[f] ?? "");
   $("deal_returnType").value = S.deal.returnType === "cap" ? "cap" : "coc";
-  S.arv = {...blankState().arv, ...(S.arv || {})};
+  normalizeArv();
   ARV_FIELDS.forEach(f => $("arv_" + f).value = S.arv[f] ?? "");
-  $("arv_useLot").checked = !!S.arv.useLot;
+  CRIT_KEYS.forEach(k => $("crit_" + k).checked = !!S.arv.crit[k]);
+  FLIP_FIELDS.forEach(f => $("flip_" + f).value = S.flip[f] ?? "");
   renderArv();
   updateLoanPreview();
   updateArvBasis();
@@ -464,7 +573,9 @@ $("address").addEventListener("change", async () => {
   const keep = {ptype:S.ptype, totalUnits:S.totalUnits, unitTypes:S.unitTypes, options:S.options, adj:S.adj,
     deal:{...blankState().deal, downPct:S.deal.downPct, rate:S.deal.rate, term:S.deal.term,
       target:S.deal.target, returnType:S.deal.returnType, opexPct:S.deal.opexPct},
-    arv:{...blankState().arv, radius:S.arv.radius, months:S.arv.months, sizePct:S.arv.sizePct, useLot:S.arv.useLot, lotPct:S.arv.lotPct, yearMin:S.arv.yearMin, yearMax:S.arv.yearMax}, reportKind:S.reportKind};
+    arv:{...blankState().arv, radius:S.arv.radius, months:S.arv.months, sizePct:S.arv.sizePct, lotPct:S.arv.lotPct, yearMin:S.arv.yearMin, yearMax:S.arv.yearMax,
+      bedsPm:S.arv.bedsPm, bathsPm:S.arv.bathsPm, crit:{...S.arv.crit}},
+    flip:{...blankState().flip, sellPct:S.flip.sellPct, holdMonths:S.flip.holdMonths}, reportKind:S.reportKind};
   S = {...blankState(), ...keep, address:next};
   renderForm(); renderResults(); $("recordNote").textContent = "Taxes, year built, assessed value and last sale. Uses 1 RentCast call. Anything you've already typed is kept.";
 });
@@ -810,15 +921,44 @@ function arvCalc(){
     maxOffer70: final != null ? round1000(final * 0.7 - (rehab || 0)) : null };
 }
 
+// Flip: ARV from comparable sales, less price, rehab, selling and holding costs.
+function flipCalc(){
+  const a = arvCalc(), f = S.flip || {}, m = mortgage();
+  const sellPct = num(f.sellPct) ?? 8, months = num(f.holdMonths) ?? 6;
+  const autoMonthly = Math.round((m ? m.pi : 0) + (num(S.deal.taxes) || 0) / 12 + (num(S.deal.insurance) || 0) / 12);
+  const monthly = num(f.holdMonthly) ?? autoMonthly;
+  const rehab = a.rehab || 0;
+  const selling = a.final != null ? Math.round(a.final * sellPct / 100) : null;
+  const holding = Math.round(monthly * months);
+  const totalCost = a.price != null ? a.price + rehab + holding : null;
+  const profit = a.final != null && a.price != null ? a.final - a.price - rehab - selling - holding : null;
+  const roi = profit != null && totalCost ? profit / totalCost * 100 : null;
+  return {...a, sellPct, months, monthly, autoMonthly, selling, holding, totalCost, profit, roi,
+    meets70: a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null};
+}
+function renderFlip(){
+  const box = $("flipResults"); if(!box || !S.flip) return;
+  const f = flipCalc();
+  $("flip_holdMonthly").placeholder = f.autoMonthly ? String(f.autoMonthly) : "0";
+  const sign = v => (v < 0 ? "−" : "") + money(Math.abs(v));
+  box.innerHTML = `<div class="estimate">
+      <div class="stat key"><div class="label">After-repair value</div><div class="v">${money(f.final)}</div><div class="small muted">${f.final == null ? "Tick sales under Comparable sales" : num(S.arv.override) != null ? "Your override" : `From ${f.used.length} comparable sale${f.used.length === 1 ? "" : "s"}`}</div></div>
+      <div class="stat"><div class="label">All-in cost</div><div class="v">${money(f.totalCost)}</div><div class="small muted">${f.totalCost == null ? "Enter a price above" : `Price + ${money(f.rehab || 0)} rehab + ${money(f.holding)} holding`}</div></div>
+      <div class="stat"><div class="label">Selling costs</div><div class="v">${money(f.selling)}</div><div class="small muted">${f.sellPct}% of ARV</div></div>
+      <div class="stat ${f.profit == null ? "" : f.profit >= 0 ? "pass" : "fail"}"><div class="label">Net profit</div><div class="v">${f.profit == null ? "–" : sign(f.profit)}</div><div class="small">${f.roi == null ? "Needs a price and ARV" : `${signPct(f.roi)} return on all-in cost`}</div></div>
+      <div class="stat ${f.meets70 == null ? "" : f.meets70 ? "pass" : "fail"}"><div class="label">70% rule max offer</div><div class="v">${money(f.maxOffer70)}</div><div class="small">${f.meets70 == null ? "70% of ARV minus rehab" : f.meets70 ? "Price is at or under it" : `Price is ${money(f.price - f.maxOffer70)} over`}</div></div>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Holding: ${f.months} month${f.months === 1 ? "" : "s"} at ${money(f.monthly)}/mo${num(S.flip.holdMonthly) == null ? " (loan payment, taxes and insurance)" : ""}. Not included: buyer closing costs and loan fees.</p>`;
+}
+
 $("btnSold").onclick = async () => {
   readForm();
   if(!S.address){ $("address").focus(); toast("Enter the property address first."); return }
-  const sq = subjectSqft(), pct = (num(S.arv.sizePct) ?? 25) / 100;
-  if(S.arv.useLot && !lotRange()){ $("arv_lot").focus(); toast("Enter the lot size, or turn off lot size."); return }
-  const lr = lotRange(), yr = yearRange(S.arv.yearMin, S.arv.yearMax);
-  const payload = { address:S.address, minLot: lr?.min, maxLot: lr?.max, yearMin: yr?.lo ?? (yr ? 1700 : undefined), yearMax: yr?.hi ?? (yr ? new Date().getFullYear() + 1 : undefined), yearText: yr?.text, radius:S.arv.radius || 0.5, days:Math.round((S.arv.months || 6) * 30.4),
-    // multifamily: no type filter, because county records often label duplexes single-family; sorted below by unit count
-    propertyType: TYPES[S.ptype].units === 1 ? TYPES[S.ptype].api : undefined, minSqft: sq && pct ? Math.round(sq*(1-pct)) : undefined, maxSqft: sq && pct ? Math.round(sq*(1+pct)) : undefined };
+  const crit = soldCriteria();
+  if(crit.missing === "lot"){ $("arv_lot").focus(); toast("Enter the lot size, or turn off Lot size."); return }
+  if(crit.missing === "year"){ $("arv_yearMin").focus(); toast("Enter a year, or turn off Year built."); return }
+  // multifamily never sends a type filter: county records often label duplexes single-family; the app sorts by unit count
+  const payload = { address:S.address, ...crit.out, crit:{...S.arv.crit} };
   const btn = $("btnSold"); btn.disabled = true; $("soldNote").textContent = "Searching recorded sales…";
   try{
     const body = await guarded("sold", payload, "sold homes near " + S.address.split(",")[0]);
@@ -835,9 +975,7 @@ $("btnSold").onclick = async () => {
     const cap = payload.propertyType ? 200 : 500;
     S.arv.sold = {fetchedAt:body.fetchedAt, fromCache:body.fromCache, list, params:payload, capped: recs.length >= cap, cap};
     S.arv.use = {}; S.arv.showAll = false;
-    const sizeNote = (payload.minSqft ? ` Sized ${payload.minSqft.toLocaleString()}–${payload.maxSqft.toLocaleString()} sq ft${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}.` : "")
-      + (payload.minLot != null ? ` Lots ${payload.minLot.toLocaleString()}–${payload.maxLot.toLocaleString()} sq ft.` : "")
-      + (payload.yearText ? ` Built ${payload.yearText}.` : "");
+    const sizeNote = " " + critSummary(payload);
     const multi = TYPES[S.ptype].units !== 1, same = list.filter(x => unitTier(x) === 0).length, otherMf = list.filter(x => x.match && unitTier(x) > 0).length;
     const word = UNIT_WORD[totalUnits()] ? UNIT_WORD[totalUnits()] + (same === 1 ? "" : "es") : `${totalUnits()}-unit sale${same === 1 ? "" : "s"}`;
     $("soldNote").textContent = (multi ? `${same} ${word}${otherMf ? ` and ${otherMf} other multifamily` : ""} out of ${list.length} sales in the area` : `${list.length} sales found`)
@@ -847,6 +985,17 @@ $("btnSold").onclick = async () => {
   finally{ btn.disabled = false }
 };
 
+// One line describing a search, for the note under the button and the reports.
+function critSummary(p){
+  const bits = [`within ${p.radius} mi`, `sold in the last ${Math.round(p.days / 30.4)} months`];
+  if(p.minSqft) bits.push(`${p.minSqft.toLocaleString()}–${p.maxSqft.toLocaleString()} sq ft`);
+  if(p.bedsMin != null) bits.push(`${p.bedsMin}–${p.bedsMax} bd`);
+  if(p.bathsMin != null) bits.push(`${p.bathsMin}–${p.bathsMax} ba`);
+  if(p.yearText) bits.push(`built ${p.yearText}`);
+  if(p.minLot != null) bits.push(`lots ${p.minLot.toLocaleString()}–${p.maxLot.toLocaleString()} sq ft`);
+  if(p.crit && !p.crit.type) bits.push("any property type");
+  return "Searched " + bits.join(", ") + ".";
+}
 // Which sales match the subject's kind of property. Multifamily goes by unit count first,
 // since the county's property-type label is often "Single Family" for a duplex.
 function isTypeMatch(r){
@@ -875,13 +1024,15 @@ function renderArv(){
   updateWrapPanel();
   const box = $("arvResults"), A = S.arv;
   if(!A.sold){ box.innerHTML = ""; return }
-  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: x.match ?? true}))
+  const typeOn = A.crit?.type !== false;
+  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: typeOn ? (x.match ?? true) : true}))
     .sort((a,b) => unitTier(a) - unitTier(b) || (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
   const others = all.filter(x => !x.match).length;
   const list = A.showAll ? all : all.filter(x => x.match || A.use[x.id]);
-  const meets = k.price != null && k.maxOffer70 != null ? k.price <= k.maxOffer70 : null;
+  const vsDiff = k.final != null && k.price != null ? k.price - k.final : null;
   box.innerHTML = `
-    ${list.length ? `<div class="tablewrap" style="margin-top:14px"><table>
+    <p class="small muted" style="margin:12px 0 0">${critSummary(A.sold.params)}</p>
+    ${list.length ? `<div class="tablewrap" style="margin-top:10px"><table>
       <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Lot</th><th class="n">Built</th><th class="n">Miles</th></tr></thead>
       <tbody>${list.map(s => `<tr class="${A.use[s.id] ? "use" : "skip"}">
         <td><input type="checkbox" aria-label="Use this sale" data-sold="${esc(s.id)}" ${A.use[s.id] ? "checked" : ""}></td>
@@ -889,17 +1040,17 @@ function renderArv(){
         <td class="n num">${money(s.price)}</td><td>${s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–"}</td>
         <td class="n num">${s.beds ?? "–"}</td><td class="n num">${s.baths ?? "–"}</td><td class="n num">${s.sqft ? s.sqft.toLocaleString() : "–"}</td>
         <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${s.lot ? (s.lot >= 43560 ? (s.lot/43560).toFixed(2) + " ac" : s.lot.toLocaleString()) : "–"}</td><td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
-    </table></div>` : `<p class="muted" style="margin-top:12px">${k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or a wider size range.</p>`}
+    </table></div>` : `<p class="muted" style="margin-top:12px">${k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or turn off a criterion.</p>`}
     ${A.sold.capped ? `<div class="banner warn" style="margin-top:12px">RentCast returned its limit of ${A.sold.cap} sales for one search, so some sales in this area may be missing. Use a smaller radius or shorter time window to see them all.</div>` : ""}
     ${k.multi && others ? `<div class="actions" style="margin-top:8px"><button class="link" id="btnShowOthers">${A.showAll ? "Show multifamily only" : `Show ${others} other sale${others === 1 ? "" : "s"} nearby (not multifamily)`}</button></div>` : ""}
     <div class="estimate">
-      <div class="stat key"><div class="label">After-repair value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sales · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the finished homes above"}</div></div>
+      <div class="stat key"><div class="label">Estimated value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sale${k.used.length === 1 ? "" : "s"} · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the sales to compare above"}</div></div>
       ${k.multi ? `<div class="stat"><div class="label">Per-unit check</div><div class="v">${money(k.perUnitEst)}</div><div class="small muted">${k.perUnitEst ? `Median ${money(k.medPerUnit)}/unit × ${totalUnits()} units` : k.used.length ? "None of the ticked sales list a unit count" : "Tick sales above"}</div></div>`
         : `<div class="stat"><div class="label">Selected range</div><div class="v">${k.used.length ? money(k.low) + "–" + money(k.high).slice(1) : "–"}</div><div class="small muted">Sale prices</div></div>`}
-      <div class="stat ${meets == null ? "" : meets ? "pass" : "fail"}"><div class="label">70% rule max offer</div><div class="v">${money(k.maxOffer70)}</div><div class="small">${meets == null ? "70% of ARV minus rehab" : meets ? "Price is at or under it" : `Price is ${money(k.price - k.maxOffer70)} over`}</div></div>
-      <div class="stat ${k.equity == null ? "" : k.equity >= 0 ? "pass" : "fail"}"><div class="label">Equity after rehab</div><div class="v">${k.equity == null ? "–" : (k.equity < 0 ? "−" : "") + money(Math.abs(k.equity))}</div><div class="small">${k.allIn != null ? "ARV minus price and rehab (" + money(k.allIn) + ")" : "Enter a price above"}</div></div>
+      <div class="stat ${vsDiff == null ? "" : vsDiff <= 0 ? "pass" : "fail"}"><div class="label">Price vs value</div><div class="v">${vsDiff == null ? "–" : (vsDiff <= 0 ? "−" : "+") + money(Math.abs(vsDiff))}</div><div class="small">${vsDiff == null ? (k.final == null ? "Tick sales to compare" : "Enter a price above") : vsDiff <= 0 ? "Price is under the estimated value" : "Price is over the estimated value"}</div></div>
     </div>
-    <div class="grid" style="margin-top:12px"><div class="field"><label class="label" for="arv_override">Override ARV</label><input id="arv_override" data-arvov type="number" min="0" step="1000" placeholder="${k.est ?? ""}" value="${A.override ?? ""}"></div></div>`;
+    <div class="grid" style="margin-top:12px"><div class="field"><label class="label" for="arv_override">Override value</label><input id="arv_override" data-arvov type="number" min="0" step="1000" placeholder="${k.est ?? ""}" value="${A.override ?? ""}"></div></div>`;
+  renderFlip();
 }
 $("arvResults").addEventListener("click", e => {
   if(e.target.id === "btnShowOthers"){ S.arv.showAll = !S.arv.showAll; renderArv() }
@@ -913,7 +1064,8 @@ $("arvResults").addEventListener("input", e => {
   S.arv.override = e.target.value === "" ? "" : Number(e.target.value);
   clearTimeout(rt); rt = setTimeout(() => { renderArv(); const el = $("arv_override"); el.focus(); const v = el.value; el.value = ""; el.value = v }, 450);
 });
-$("arv_useLot").addEventListener("change", () => readForm());
+CRIT_KEYS.forEach(k => $("crit_" + k).addEventListener("change", () => readForm()));
+FLIP_FIELDS.forEach(f => $("flip_" + f).addEventListener("input", () => { readForm() }));
 ARV_FIELDS.forEach(f => $("arv_" + f).addEventListener("input", () => { readForm(); if(f === "rehab"){ clearTimeout(rt); rt = setTimeout(() => { renderArv(); renderResults() }, 300) } }));
 
 // ---- deal math ----
@@ -1143,7 +1295,7 @@ function reportHTML(kind){
   const salesTable = (note) => a.used.length ? `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="color:#5d6b63">${["Sold comparable","Sold","Date","Bd","Ba","Sq ft","$/sq ft"].concat(a.multi ? ["Units","$/unit"] : []).concat(lotOn ? ["Lot"] : []).concat(["Built"]).map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;text-align:${i && i !== 2 ? "right" : "left"}">${h}</th>`).join("")}</tr></thead>
       <tbody>${a.used.map(s => `<tr>${[esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–", s.beds ?? "–", s.baths ?? "–", s.sqft ? s.sqft.toLocaleString() : "–", s.sqft ? money2(s.price/s.sqft) : "–"].concat(a.multi ? [s.units ?? "–", s.units ? money(s.price/s.units) : "–"] : []).concat(lotOn ? [s.lot ? (s.lot >= 43560 ? (s.lot/43560).toFixed(2) + " ac" : s.lot.toLocaleString()) : "–"] : []).concat([s.yearBuilt ?? "–"]).map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;text-align:${i && i !== 2 ? "right" : "left"};${i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
-    </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${note}${lotOn ? ` Searched lots of ${S.arv.sold.params.minLot.toLocaleString()}–${S.arv.sold.params.maxLot.toLocaleString()} sq ft.` : ""}${soldYear ? ` Searched homes built ${soldYear}.` : ""}</p>`
+    </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${note} ${S.arv?.sold?.params ? critSummary(S.arv.sold.params) : ""}</p>`
     : `<p style="font-size:13px;color:#5d6b63;margin:0">No sold comparables selected. Use Find sold homes and tick the sales to compare.</p>`;
   const arvSection = a.final == null ? "" : `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">After-repair value</h3>
     <div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
@@ -1159,10 +1311,11 @@ function reportHTML(kind){
   const valueSub = a.final == null ? "Select comparable sales" : num(S.arv.override) != null ? "Owner's estimate" : `From ${a.used.length} comparable sale${a.used.length === 1 ? "" : "s"}`;
   const flipEquityColor = a.equity == null ? null : a.equity >= 0 ? "#2f6b4f" : "#a3322a";
   const meets70b = a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null;
+  const fc = flipCalc();
   const bands = {
     rental: `${bandItem("Suggested total rent", total ? money(total) + "/mo" : "–")}${bandItem("Annual gross", total ? money(total*12) : "–")}${onePctBox}${cfBox}${SHOW_OFFER_IN_REPORT ? offerBox : ""}`,
     purchase: `${bandItem("Price", m.price != null ? money(m.price) : "–", m.price && sumSqft ? money2(m.price/sumSqft) + "/sq ft" : "")}${bandItem("Estimated value", a.final != null ? money(a.final) : "–", valueSub)}${bandItem("Price vs value", valueDiff == null ? "–" : (valueDiff <= 0 ? "−" : "+") + money(Math.abs(valueDiff)), valueDiff == null ? "" : valueDiff <= 0 ? "Under estimated value" : "Over estimated value", valueColor)}${bandItem("Monthly cost", monthlyCost != null ? money(monthlyCost) + "/mo" : "–", monthlyCost != null ? "Loan, taxes, insurance" : "Enter price and financing")}`,
-    flip: `${bandItem("Purchase price", m.price != null ? money(m.price) : "–")}${bandItem("Rehab", a.rehab != null ? money(a.rehab) : "–", a.allIn != null ? "All-in " + money(a.allIn) : "")}${bandItem("After-repair value", a.final != null ? money(a.final) : "–", a.final == null ? "Select sold comps" : num(S.arv.override) != null ? "Owner's estimate" : `${a.used.length} sold comp${a.used.length === 1 ? "" : "s"}`)}${bandItem("Equity after rehab", a.equity == null ? "–" : (a.equity < 0 ? "−" : "") + money(Math.abs(a.equity)), a.equity != null && a.final ? signPct(a.equity / a.final * 100) + " of ARV" : "", flipEquityColor)}${bandItem("70% rule max", a.maxOffer70 != null ? money(a.maxOffer70) : "–", meets70b == null ? "70% of ARV minus rehab" : meets70b ? "Price fits" : "Price " + money(a.price - a.maxOffer70) + " over", meets70b == null ? null : meets70b ? "#2f6b4f" : "#9a5b00")}`,
+    flip: `${bandItem("Purchase price", m.price != null ? money(m.price) : "–")}${bandItem("Rehab", fc.rehab != null ? money(fc.rehab) : "–")}${bandItem("After-repair value", fc.final != null ? money(fc.final) : "–", fc.final == null ? "Select sold comps" : num(S.arv.override) != null ? "Owner's estimate" : `${fc.used.length} sold comp${fc.used.length === 1 ? "" : "s"}`)}${bandItem("Net profit", fc.profit == null ? "–" : (fc.profit < 0 ? "−" : "") + money(Math.abs(fc.profit)), fc.roi == null ? "" : signPct(fc.roi) + " on all-in cost", fc.profit == null ? null : fc.profit >= 0 ? "#2f6b4f" : "#a3322a")}${bandItem("70% rule max", fc.maxOffer70 != null ? money(fc.maxOffer70) : "–", fc.meets70 == null ? "70% of ARV minus rehab" : fc.meets70 ? "Price fits" : "Price " + money(fc.price - fc.maxOffer70) + " over", fc.meets70 == null ? null : fc.meets70 ? "#2f6b4f" : "#9a5b00")}`,
   };
   const purchaseCost = !m.mtg ? `<div class="rk">${H3("Financing and monthly cost")}<p style="font-size:13px;color:#5d6b63;margin:0">Enter the price, down payment, rate and term to see the monthly cost.</p></div>` : `<div class="rk">${H3("Financing and monthly cost")}
     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
@@ -1185,12 +1338,22 @@ function reportHTML(kind){
       ${arvStat("Price vs value", valueDiff == null ? "–" : (valueDiff <= 0 ? "−" : "+") + money(Math.abs(valueDiff)), valueDiff == null ? "Enter a price" : valueDiff <= 0 ? "Under estimated value" : "Over estimated value", valueColor)}
     </div>` : ""}</div>
     ${salesTable("Recorded sales from public records via RentCast.")}`;
-  const flipArv = `<div class="rk">${H3("After-repair value")}
-    ${a.final != null ? `<div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
-      ${arvStat("After-repair value", money(a.final), (num(S.arv.override) != null ? "Owner's estimate" : `Median ${money2(a.medPsf)}/sq ft of ${a.used.length} sales`) + (a.perUnitEst ? ` · per-unit check ${money(a.perUnitEst)}` : ""))}
-      ${arvStat("All-in cost", a.allIn != null ? money(a.allIn) : "–", a.allIn != null ? `Price ${money(a.price)} + rehab ${money(a.rehab || 0)}` : "Enter a price")}
-      ${arvStat("Spread", a.equity == null ? "–" : (a.equity < 0 ? "−" : "") + money(Math.abs(a.equity)), a.equity != null && a.allIn ? signPct(a.equity / a.allIn * 100) + " on all-in cost, before selling and holding costs" : "", flipEquityColor)}
-    </div>` : ""}</div>
+  const fRow = (label, v, strong, color) => `<tr><td style="padding:6px 8px;border-bottom:1px solid #ddd;${strong ? "font-weight:700" : ""}">${label}</td><td style="padding:6px 8px;border-bottom:1px solid #ddd;text-align:right;font-family:'IBM Plex Mono',monospace;${strong ? `font-weight:700;color:${color || "#1d2722"}` : ""}">${v}</td></tr>`;
+  const flipArv = `<div class="rk">${H3("Flip analysis")}
+    ${fc.final != null && fc.price != null ? `<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+      <table style="border-collapse:collapse;font-size:13px;flex:1 1 320px;min-width:0">
+        ${fRow("After-repair value", money(fc.final))}
+        ${fRow("Purchase price", "−" + money(fc.price))}
+        ${fRow("Rehab", "−" + money(fc.rehab || 0))}
+        ${fRow(`Selling costs (${fc.sellPct}% of ARV)`, "−" + money(fc.selling))}
+        ${fRow(`Holding costs (${fc.months} mo × ${money(fc.monthly)})`, "−" + money(fc.holding))}
+        ${fRow("Net profit", (fc.profit < 0 ? "−" : "") + money(Math.abs(fc.profit)), true, fc.profit >= 0 ? "#2f6b4f" : "#a3322a")}
+      </table>
+      <div style="flex:1 1 200px;font-size:13px;color:#5d6b63;line-height:1.6">
+        All-in cost ${money(fc.totalCost)}<br>Return on all-in cost ${signPct(fc.roi)}<br>70% rule max offer ${money(fc.maxOffer70)}${fc.meets70 == null ? "" : fc.meets70 ? " (price fits)" : ` (price ${money(fc.price - fc.maxOffer70)} over)`}
+      </div>
+    </div>` : `<p style="font-size:13px;color:#5d6b63;margin:0">Needs ${[fc.final == null ? "selected sold comps" : "", fc.price == null ? "a purchase price" : ""].filter(Boolean).join(" and ")}.</p>`}</div>
+    <div class="rk">${H3("Comparable sales")}</div>
     ${salesTable("Recorded sales from public records via RentCast, selected as comparable finished homes.")}`;
   const rentalComps = blocks || `<div class="rk">${H3("Rental comps")}<p style="font-size:13px;color:#5d6b63;margin:0">No rental comps yet. Use Find comps to pull them.</p></div>`;
   const bodies = {
@@ -1202,7 +1365,7 @@ function reportHTML(kind){
   const methods = {
     rental: `Method: each selected comparable rental listing is adjusted for differences from the subject (${money(S.adj.bed)} per bedroom, ${money(S.adj.bath)} per bathroom, square footage at a marginal rate), then averaged with closer and more similar comps weighted higher, and rounded to the nearest $25. Comparable listings from RentCast. Estimates are opinions of market rent, not appraisals.`,
     purchase: `Method: ${valueMethod} Estimates are opinions of value, not appraisals.`,
-    flip: `Method: after-repair ${valueMethod.charAt(0).toLowerCase() + valueMethod.slice(1)} Spread is ARV minus purchase price and rehab, before selling, holding and financing costs. The 70% rule max is 70% of ARV minus rehab. Estimates are opinions of value, not appraisals.`,
+    flip: `Method: after-repair ${valueMethod.charAt(0).toLowerCase() + valueMethod.slice(1)} Net profit is ARV minus purchase price, rehab, selling costs and holding costs (monthly loan payment, taxes and insurance unless entered otherwise); buyer closing costs and loan fees are not included. The 70% rule max is 70% of ARV minus rehab. Estimates are opinions of value, not appraisals.`,
   };
   return `<div class="rpt" style="font-family:'Source Sans 3',Arial,sans-serif;color:#1d2722;max-width:820px;margin:0 auto;padding:24px">
     <style>

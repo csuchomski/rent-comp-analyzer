@@ -16,14 +16,14 @@ Pulls comparable rentals from RentCast for a property, lets you pick which comps
 
 - Rent estimate: 1 call per unit type (comps + RentCast's estimate)
 - County records (taxes, year built, assessed value, last sale): 1 call
-- Sold homes for after-repair value (recorded sales within a radius, time window, size range, and optional lot size and year built): 1 call
+- Comparable sales (recorded sales near the property): 1 call. Each search criterion can be turned on or off: distance, sale date, size, property type, bedrooms, bathrooms, year built and lot size. Distance, sale date, size and type are on by default.
 
 ## Reports
 
 Pick the report type next to Print / Download:
 - Purchase: property details, comparable sales with an estimated value, and financing / monthly cost
 - Buy & hold rental: property details, rental comps and suggested rent, 1% rule, financing and cash flow
-- Flip: property details, purchase price, rehab, ARV from sold comps, spread and the 70% rule
+- Flip: property details, a flip analysis (after-repair value from comparable sales, rehab, selling and holding costs, net profit and return) and the 70% rule
 
 ## Year built
 

@@ -123,8 +123,16 @@ async function soldNearby(body: Record<string, unknown>) {
   // Optional year-built range. Sales with no year on record are left out by RentCast when this is set.
   const yMin = Math.round(Number(body.yearMin)), yMax = Math.round(Number(body.yearMax));
   if (body.yearMin != null && body.yearMax != null && yMin >= 1600 && yMax >= yMin && yMax <= 2200) p.yearBuilt = `${yMin}:${yMax}`;
+  // Optional bedroom / bathroom ranges (whole property). Sales without those counts are left out when set.
+  const range = (lo: unknown, hi: unknown, max: number) => {
+    const a = Number(lo), b = Number(hi);
+    return lo != null && hi != null && a >= 0 && b >= a && b <= max ? `${a}:${b}` : undefined;
+  };
+  p.bedrooms = range(body.bedsMin, body.bedsMax, 60);
+  p.bathrooms = range(body.bathsMin, body.bathsMax, 60);
   const key = "sold:" + JSON.stringify([address.toLowerCase().replace(/\s+/g, " "), p.radius, p.saleDateRange, p.propertyType ?? null, p.squareFootage ?? null]
-    .concat(p.lotSize ? [p.lotSize] : []).concat(p.yearBuilt ? ["yb:" + p.yearBuilt] : []));
+    .concat(p.lotSize ? [p.lotSize] : []).concat(p.yearBuilt ? ["yb:" + p.yearBuilt] : [])
+    .concat(p.bedrooms ? ["bd:" + p.bedrooms] : []).concat(p.bathrooms ? ["ba:" + p.bathrooms] : []));
   return await guardedCall("properties", p, key, body);
 }
 
