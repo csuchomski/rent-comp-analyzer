@@ -522,7 +522,6 @@ function renderForm(){
   const single = TYPES[S.ptype].units === 1;
   $("totalUnitsField").hidden = S.ptype !== "apartment";
   $("unitActions").hidden = single;
-  if(!single && S.unitTypes.length === 1 && S.unitTypes[0].count === 1) S.unitTypes[0].count = totalUnits();
   $("units").innerHTML = S.unitTypes.map((u,i) => `
     <div class="unit-row" data-key="${u.key}">
       ${single ? "" : `<div class="field"><label class="label" for="lb_${u.key}">Unit type</label><input id="lb_${u.key}" data-f="label" value="${esc(u.label)}"></div>`}
@@ -544,8 +543,22 @@ function checkUnits(){
   return ok;
 }
 
-$("ptype").addEventListener("change", () => { readForm(); renderForm() });
-$("totalUnits").addEventListener("input", () => { readForm(); checkUnits() });
+// Changing the type resets the unit counts to fit it: one unit type gets every unit; with several,
+// the last type takes up the difference (as long as each type keeps at least one).
+$("ptype").addEventListener("change", () => {
+  readForm();
+  if(TYPES[S.ptype].units !== 1){
+    const need = totalUnits(), u = S.unitTypes;
+    if(u.length === 1) u[0].count = need;
+    else { const others = u.slice(0, -1).reduce((t,x) => t + x.count, 0); if(need - others >= 1) u[u.length-1].count = need - others }
+  }
+  renderForm(); checkUnits();
+});
+$("totalUnits").addEventListener("input", () => {
+  readForm();
+  if(S.unitTypes.length === 1 && S.totalUnits >= 5){ S.unitTypes[0].count = S.totalUnits; const c = document.querySelector(".unit-row [data-f=count]"); if(c) c.value = S.totalUnits }
+  checkUnits();
+});
 $("units").addEventListener("input", () => { readForm(); checkUnits() });
 $("units").addEventListener("click", e => {
   const k = e.target.dataset.remove; if(!k) return;
@@ -875,7 +888,13 @@ $("results").addEventListener("input", e => {
   if(t.dataset.override){ S.overrides[t.dataset.override] = t.value === "" ? null : Number(t.value); debounceRender(t.id) }
   if(t.dataset.adj){ S.adj[t.dataset.adj] = t.value === "" ? (t.dataset.adj === "sqftRate" ? null : 0) : Number(t.value); debounceRender(t.id) }
 });
-let rt; function debounceRender(focusId){ clearTimeout(rt); rt = setTimeout(() => { renderResults(); const el = $(focusId); if(el){ el.focus(); const v = el.value; el.value = ""; el.value = v } }, 450) }
+// Re-render after typing settles. Keep focus wherever the person is now (they may have tabbed on);
+// only put it back if the re-render replaced the focused field.
+let rt; function debounceRender(){ clearTimeout(rt); rt = setTimeout(() => {
+  const id = document.activeElement?.id;
+  renderResults();
+  if(id && document.activeElement?.id !== id){ const el = $(id); if(el){ el.focus(); const v = el.value; el.value = ""; el.value = v } }
+}, 450) }
 $("results").addEventListener("click", e => {
   const t = e.target;
   if(t.dataset.discard){ const [k,id] = t.dataset.discard.split("|"); S.results[k].status[id] = "discard"; renderResults() }
