@@ -16,5 +16,17 @@ Pulls comparable rentals from RentCast for a property, lets you pick which comps
 
 - Rent estimate: 1 call per unit type (comps + RentCast's estimate)
 - County records (taxes, year built, assessed value, last sale): 1 call
-- Sold homes for after-repair value (recorded sales within a radius, time window and size range): 1 call
+- Sold homes for after-repair value (recorded sales within a radius, time window, size range, and optional lot size and year built): 1 call
+
+## Reports
+
+Pick the report type next to Print / Download:
+- Purchase: property details, comparable sales with an estimated value, and financing / monthly cost
+- Buy & hold rental: property details, rental comps and suggested rent, 1% rule, financing and cash flow
+- Flip: property details, purchase price, rehab, ARV from sold comps, spread and the 70% rule
+
+## Year built
+
+Optional in both searches. Sold-home searches send the range to RentCast. Rent comps are filtered in the app
+(RentCast's rent search has no year filter); rental listings with no year on record stay in and are marked.
 - Re-running the same inputs within 30 days uses the saved result and costs nothing

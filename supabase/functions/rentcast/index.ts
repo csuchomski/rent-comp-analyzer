@@ -120,8 +120,11 @@ async function soldNearby(body: Record<string, unknown>) {
   // Optional lot-size range (sq ft). Only sent when the app asks for it.
   const minLot = Number(body.minLot), maxLot = Number(body.maxLot);
   if (body.minLot != null && body.maxLot != null && minLot >= 0 && maxLot > minLot) p.lotSize = `${Math.round(minLot)}:${Math.round(maxLot)}`;
+  // Optional year-built range. Sales with no year on record are left out by RentCast when this is set.
+  const yMin = Math.round(Number(body.yearMin)), yMax = Math.round(Number(body.yearMax));
+  if (body.yearMin != null && body.yearMax != null && yMin >= 1600 && yMax >= yMin && yMax <= 2200) p.yearBuilt = `${yMin}:${yMax}`;
   const key = "sold:" + JSON.stringify([address.toLowerCase().replace(/\s+/g, " "), p.radius, p.saleDateRange, p.propertyType ?? null, p.squareFootage ?? null]
-    .concat(p.lotSize ? [p.lotSize] : []));
+    .concat(p.lotSize ? [p.lotSize] : []).concat(p.yearBuilt ? ["yb:" + p.yearBuilt] : []));
   return await guardedCall("properties", p, key, body);
 }
 
