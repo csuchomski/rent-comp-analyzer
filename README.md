@@ -18,6 +18,10 @@ Pulls comparable rentals from RentCast for a property, lets you pick which comps
 - County records (taxes, year built, assessed value, last sale): 1 call
 - Comparable sales (recorded sales near the property): 1 call. Each search criterion can be turned on or off: distance, sale date, size, property type, bedrooms, bathrooms, year built and lot size. Distance, sale date, size and type are on by default.
 
+## Estimated value
+
+Sales comparison approach, the way an appraiser's grid works. Each ticked sale is adjusted toward the subject for market change since it sold, living area (at a marginal $/sq ft measured from the sales in the search, not the full price per sq ft), bedrooms, bathrooms, age and lot size. The adjusted prices are weighted toward the closest sales needing the smallest gross adjustment; a sale whose adjusted price is far from the rest is flagged and counts less. Every rate can be changed under Adjustment rates. Market trend starts at 0: enter your local trend.
+
 ## Reports
 
 Pick the report type next to Print / Download:

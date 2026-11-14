@@ -348,7 +348,7 @@ function blankState(){
     options:{compCount:15, maxRadius:"", daysOld:"", yearMin:"", yearMax:""},
     results:{}, adj:{bed:100, bath:50, sqftRate:null}, overrides:{}, notes:"",
     deal:{price:"", taxes:"", taxYear:"", yearBuilt:"", insurance:"", downPct:25, rate:"", term:30, target:8, returnType:"coc", opexPct:""}, taxSource:"", record:null,
-    arv:{radius:1, months:12, sizePct:25, rehab:"", override:"", sold:null, use:{}, lot:"", lotPct:50, yearMin:"", yearMax:"", bedsPm:1, bathsPm:1,
+    arv:{radius:1, months:12, sizePct:25, rehab:"", override:"", sold:null, use:{}, rates:{}, lot:"", lotPct:50, yearMin:"", yearMax:"", bedsPm:1, bathsPm:1,
       crit:{...DEFAULT_CRIT}},
     flip:{sellPct:8, holdMonths:6, holdMonthly:""}, reportKind:"rental" };
 }
@@ -560,7 +560,9 @@ $("totalUnits").addEventListener("input", () => {
   if(S.unitTypes.length === 1 && S.totalUnits >= 5){ S.unitTypes[0].count = S.totalUnits; const c = document.querySelector(".unit-row [data-f=count]"); if(c) c.value = S.totalUnits }
   checkUnits();
 });
-$("units").addEventListener("input", () => { readForm(); checkUnits() });
+// The value grid compares sales to the subject's size, rooms, age and lot, so redo it when those change.
+let arvT; function laterArv(){ clearTimeout(arvT); arvT = setTimeout(renderArv, 460) }
+$("units").addEventListener("input", () => { readForm(); checkUnits(); laterArv() });
 $("units").addEventListener("click", e => {
   const k = e.target.dataset.remove; if(!k) return;
   readForm(); S.unitTypes = S.unitTypes.filter(u => u.key !== k); delete S.results[k]; renderForm(); renderResults();
@@ -701,7 +703,7 @@ $("btnRecord").onclick = async () => {
 };
 document.querySelectorAll("[data-deal]").forEach(el => el.addEventListener("input", () => {
   readForm(); if(el.id === "deal_taxes") S.taxSource = S.deal.taxes === "" ? "" : "Entered";
-  debounceRender(el.id, true); if(el.id === "deal_price") setTimeout(renderArv, 460);
+  debounceRender(el.id, true); laterArv();
 }));
 
 $("btnFind").onclick = async () => {
@@ -923,22 +925,114 @@ function lastSale(rec){
   const ev = Object.values(rec.history || {}).filter(e => e && e.price && /sale/i.test(e.event || "sale")).sort((x,y) => String(y.date).localeCompare(String(x.date)))[0];
   return ev ? {price:Number(ev.price), date:ev.date} : null;
 }
+// ---- value from comparable sales (sales comparison approach) ----
+// Each selected sale is adjusted toward the subject, feature by feature, the way an appraiser's
+// grid works: market conditions since the sale, living area at a market-derived marginal rate
+// (not the full price per sq ft, which also pays for land, kitchen, roof...), bedrooms, bathrooms,
+// age and lot. The adjusted prices are then reconciled with the most weight on the sales that
+// needed the smallest total (gross) adjustment, i.e. the most similar ones.
+const DAY = 864e5;
+const monthsAgo = d => d ? Math.max(0, (Date.now() - new Date(d).getTime()) / (30.4 * DAY)) : null;
+const round100 = n => Math.round(n / 100) * 100;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// Theil–Sen slope: the median of every pairwise slope. Resists the odd outlier sale far better than least squares.
+function theilSen(pts){
+  const s = [];
+  for(let i = 0; i < pts.length; i++) for(let j = i + 1; j < pts.length; j++){
+    const dx = pts[j][0] - pts[i][0]; if(Math.abs(dx) > 1e-9) s.push((pts[j][1] - pts[i][1]) / dx);
+  }
+  return s.length ? median(s) : null;
+}
+function subjectYear(){ return num(S.deal?.yearBuilt) ?? (Number(S.record?.yearBuilt) || null) }
+const RATE_KEYS = ["trend","gla","bed","bath","year","lot"];
+// Market-derived starting rates from every sale in the search (not just the ticked ones).
+function valueModel(){
+  const A = S.arv, typeOn = A.crit?.type !== false;
+  const pool = (A.sold?.list || []).filter(x => x.price > 0 && (typeOn ? x.match !== false : true));
+  const withSize = pool.filter(x => x.sqft > 0);
+  const medPrice = median(pool.map(x => x.price)) || 0, medPsf = median(withSize.map(x => x.price / x.sqft));
+  // Market trend is not measured here: one search is a few months of mixed houses, and on real
+  // searches the measured trend swung from −17% to +86% a year. The person enters it (local MLS or market report).
+  const trend = num(A.rates?.trend) ?? 0;
+  const tAdj = x => x.price * (1 + trend / 100 * (monthsAgo(x.date) || 0) / 12);
+  // living area: slope of time-adjusted price against size, kept within 20–70% of the median $/sq ft
+  let gla = medPsf ? medPsf * 0.4 : 0, glaFrom = "40% of the median $/sq ft (too few sales to measure)";
+  if(withSize.length >= 8 && medPsf){
+    const m = theilSen(withSize.map(x => [x.sqft, tAdj(x)]));
+    if(m != null){
+      const lo = medPsf * 0.2, hi = medPsf * 0.7;
+      gla = clamp(m, lo, hi);
+      glaFrom = m < lo ? `floor of 20% of the median $/sq ft (sales showed ${money(m)})` : m > hi ? `cap of 70% of the median $/sq ft (sales showed ${money(m)})` : `from ${withSize.length} sales in this search`;
+    }
+  }
+  const r500 = n => Math.round(n / 500) * 500, r50 = n => Math.round(n / 50) * 50;
+  return {
+    medPrice, medPsf, pool: pool.length,
+    def: { trend: 0, gla: Math.round(gla), bed: r500(medPrice * 0.01), bath: r500(medPrice * 0.025), year: r50(medPrice * 0.0025), lot: 4 },
+    from: { trend: "use your local trend from the MLS or a market report", gla: glaFrom, bed: "1% of the median sale price", bath: "2.5% of the median sale price (half for a half bath)", year: "0.25% of the median sale price per year, up to 25 years", lot: "% of price per doubling of lot size, up to 2 doublings" },
+  };
+}
+function valueRates(model){
+  const r = {}, o = S.arv.rates || {};
+  RATE_KEYS.forEach(k => r[k] = num(o[k]) ?? model.def[k]);
+  return r;
+}
+// The adjustment grid line for one sale.
+function adjustSale(s, R, subj){
+  const mo = monthsAgo(s.date);
+  const time = mo != null ? round100(s.price * R.trend / 100 * mo / 12) : 0;
+  const size = subj.sqft && s.sqft ? round100((subj.sqft - s.sqft) * R.gla) : 0;
+  const beds = subj.beds != null && s.beds != null ? round100((subj.beds - s.beds) * R.bed) : 0;
+  const baths = subj.baths != null && s.baths != null ? round100((subj.baths - s.baths) * R.bath) : 0;
+  const age = subj.year && s.yearBuilt ? round100(clamp(subj.year - s.yearBuilt, -25, 25) * R.year) : 0;
+  const lot = subj.lot && s.lot ? round100(s.price * R.lot / 100 * clamp(Math.log2(subj.lot / s.lot), -2, 2)) : 0;
+  const parts = {time, size, beds, baths, age, lot};
+  const net = Object.values(parts).reduce((t, v) => t + v, 0), gross = Object.values(parts).reduce((t, v) => t + Math.abs(v), 0);
+  const missing = [!s.sqft && "size", s.beds == null && "beds", s.baths == null && "baths"].filter(Boolean);
+  // reliability for weighting: gross adjustment, plus a penalty for what we couldn't adjust
+  const grossPct = gross / s.price;
+  const penalty = (s.sqft ? 0 : 0.2) + (unitTier(s) === 2 ? 0.15 : unitTier(s) === 1 ? 0.05 : 0) + (unitTier(s) === 3 ? 0.25 : 0);
+  // location isn't in public records, so distance stands in for it: 3 points per mile
+  const far = s.miles != null ? s.miles * 0.03 : 0.03;
+  return { ...parts, net, gross, netPct: net / s.price, grossPct, adjusted: s.price + net, missing, score: grossPct + penalty + far };
+}
+function subjectFacts(){
+  const bb = subjectBedsBaths();
+  return { sqft: subjectSqft(), beds: bb.beds, baths: bb.baths, year: subjectYear(), lot: subjectLot() };
+}
 function arvCalc(){
   const A = S.arv, sold = A.sold?.list || [];
-  const used = sold.filter(s => A.use[s.id]);
+  const model = valueModel(), R = valueRates(model), subj = subjectFacts();
+  const used = sold.filter(s => A.use[s.id]).map(s => ({...s, adj: adjustSale(s, R, subj)}));
+  let est = null;
+  if(used.length){
+    // An adjusted price far from the others usually means a difference public records don't show
+    // (condition, quality, location): flag it and give it less weight.
+    const mid = median(used.map(s => s.adj.adjusted));
+    used.forEach(s => { s.off = used.length >= 3 ? s.adj.adjusted / mid - 1 : 0; s.outlier = Math.abs(s.off) > 0.15 });
+    const w = used.map(s => 1 / (0.05 + s.adj.score + Math.max(0, Math.abs(s.off) - 0.15)) ** 2), tw = w.reduce((t, v) => t + v, 0);
+    used.forEach((s, i) => s.weight = w[i] / tw);
+    est = round1000(used.reduce((t, s) => t + s.adj.adjusted * s.weight, 0));
+  }
+  const sizes = used.filter(s => s.sqft > 0).map(s => s.sqft);
+  const bracket = !subj.sqft || !sizes.length ? null : subj.sqft > Math.max(...sizes) ? "above" : subj.sqft < Math.min(...sizes) ? "below" : "ok";
   const psfs = used.filter(s => s.sqft > 0).map(s => s.price / s.sqft);
-  const medPsf = median(psfs), subj = subjectSqft();
-  const est = used.length ? round1000(medPsf && subj ? medPsf * subj : median(used.map(s => s.price))) : null;
   const perUnit = used.filter(s => s.units > 0).map(s => s.price / s.units);
   const multi = TYPES[S.ptype].units !== 1;
   const perUnitEst = multi && perUnit.length ? round1000(median(perUnit) * totalUnits()) : null;
   const final = num(A.override) ?? est;
   const price = num(S.deal.price), rehab = num(A.rehab);
   const allIn = price != null ? price + (rehab || 0) : null;
-  return { used, medPsf, subj, est, final, price, rehab, multi, perUnitEst, medPerUnit: median(perUnit),
-    low: used.length ? Math.min(...used.map(s => s.price)) : null, high: used.length ? Math.max(...used.map(s => s.price)) : null,
+  const adjs = used.map(s => s.adj.adjusted);
+  return { used, model, R, subj, est, final, price, rehab, multi, perUnitEst, medPerUnit: median(perUnit), medPsf: median(psfs), bracket,
+    low: adjs.length ? Math.min(...adjs) : null, high: adjs.length ? Math.max(...adjs) : null,
     allIn, equity: final != null && allIn != null ? final - allIn : null,
     maxOffer70: final != null ? round1000(final * 0.7 - (rehab || 0)) : null };
+}
+// One line listing the rates used, for the app and the reports.
+function ratesLine(R){
+  const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
+  return `market ${sgn(R.trend)}%/yr, living area ${money(R.gla)}/sq ft, bedroom ${money(R.bed)}, full bath ${money(R.bath)}, age ${money(R.year)}/yr, lot ${R.lot}% per doubling`;
 }
 
 // Flip: ARV from comparable sales, less price, rehab, selling and holding costs.
@@ -999,7 +1093,7 @@ $("btnSold").onclick = async () => {
     const multi = TYPES[S.ptype].units !== 1, same = list.filter(x => unitTier(x) === 0).length, otherMf = list.filter(x => x.match && unitTier(x) > 0).length;
     const word = UNIT_WORD[totalUnits()] ? UNIT_WORD[totalUnits()] + (same === 1 ? "" : "es") : `${totalUnits()}-unit sale${same === 1 ? "" : "s"}`;
     $("soldNote").textContent = (multi ? `${same} ${word}${otherMf ? ` and ${otherMf} other multifamily` : ""} out of ${list.length} sales in the area` : `${list.length} sales found`)
-      + `${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} ${multi ? "Same unit count first, then highest" : "Highest"} $/sq ft first.`;
+      + `${body.fromCache ? " (saved search, no call used)" : ""}.${sizeNote} ${multi ? "Same unit count first, then most similar" : "Most similar first"}.`;
     renderArv();
   }catch(err){ $("soldNote").textContent = ""; showError(err) }
   finally{ btn.disabled = false }
@@ -1045,30 +1139,62 @@ function renderArv(){
   const box = $("arvResults"), A = S.arv;
   if(!A.sold){ box.innerHTML = ""; return }
   const typeOn = A.crit?.type !== false;
-  const k = arvCalc(), all = A.sold.list.map(x => ({...x, match: typeOn ? (x.match ?? true) : true}))
-    .sort((a,b) => unitTier(a) - unitTier(b) || (b.sqft ? b.price/b.sqft : 0) - (a.sqft ? a.price/a.sqft : 0));
+  const k = arvCalc();
+  // every sale gets a grid line so the list can be ranked by similarity (smallest gross adjustment first)
+  const all = A.sold.list.map(x => { const y = {...x, match: typeOn ? (x.match ?? true) : true}; y.adj = adjustSale(y, k.R, k.subj); return y })
+    .sort((a,b) => unitTier(a) - unitTier(b) || a.adj.score - b.adj.score);
   const others = all.filter(x => !x.match).length;
   const list = A.showAll ? all : all.filter(x => x.match || A.use[x.id]);
   const vsDiff = k.final != null && k.price != null ? k.price - k.final : null;
+  const sgn = v => v === 0 ? "0" : (v > 0 ? "+" : "−") + money(Math.abs(v)).slice(1);
+  const pctTxt = v => (v * 100).toFixed(0) + "%";
+  const fmtLot = l => l ? (l >= 43560 ? (l/43560).toFixed(2) + " ac" : l.toLocaleString()) : "–";
+  const subjLine = [k.subj.sqft ? k.subj.sqft.toLocaleString() + " sq ft" : "size not entered", k.subj.beds != null ? k.subj.beds + " bd" : null, k.subj.baths != null ? k.subj.baths + " ba" : null,
+    k.subj.year ? "built " + k.subj.year : "year built not entered", k.subj.lot ? "lot " + fmtLot(k.subj.lot) + (k.subj.lot < 43560 ? " sq ft" : "") : "lot size not entered"].filter(Boolean).join(" · ");
+  const rateField = (key, label, step, unit) => `<div class="field"><label class="label" for="rate_${key}">${label}</label>
+      <input id="rate_${key}" data-rate="${key}" type="number" step="${step}" placeholder="${k.model.def[key]}" value="${A.rates?.[key] ?? ""}">
+      <span class="small muted">${[unit, num(A.rates?.[key]) == null ? k.model.from[key] : "your rate (default " + k.model.def[key] + ")"].filter(Boolean).join(" · ")}</span></div>`;
   box.innerHTML = `
-    <p class="small muted" style="margin:12px 0 0">${critSummary(A.sold.params)}</p>
+    <p class="small muted" style="margin:12px 0 0">${critSummary(A.sold.params)} Most similar first: ranked by how much each sale has to be adjusted to match this property, and how close it is.</p>
     ${list.length ? `<div class="tablewrap" style="margin-top:10px"><table>
-      <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Lot</th><th class="n">Built</th><th class="n">Miles</th></tr></thead>
+      <thead><tr><th>Use</th><th>Address</th><th class="n">Sold</th><th>Date</th><th class="n">Bd</th><th class="n">Ba</th><th class="n">Sq ft</th><th class="n">$/sq ft</th>${k.multi ? `<th class="n">Units</th><th class="n">$/unit</th>` : ""}<th class="n">Lot</th><th class="n">Built</th><th class="n">Miles</th><th class="n">Adjusted</th><th class="n">Gross adj</th></tr></thead>
       <tbody>${list.map(s => `<tr class="${A.use[s.id] ? "use" : "skip"}">
         <td><input type="checkbox" aria-label="Use this sale" data-sold="${esc(s.id)}" ${A.use[s.id] ? "checked" : ""}></td>
-        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""} · <span style="${unitTier(s) === 0 ? "color:var(--good);font-weight:600" : unitTier(s) === 2 ? "color:var(--warn)" : ""}">${tierLabel(s)}</span></div>` : ""}</td>
+        <td class="addr"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">${esc(s.address)}</a>${k.multi ? `<div class="small muted">${esc(s.type || "Type unknown")}${s.units ? " · " + s.units + " unit" + (s.units > 1 ? "s" : "") : ""} · <span style="${unitTier(s) === 0 ? "color:var(--good);font-weight:600" : unitTier(s) === 2 ? "color:var(--warn)" : ""}">${tierLabel(s)}</span></div>` : ""}${s.adj.missing.length ? `<div class="small" style="color:var(--warn)">No ${s.adj.missing.join(", ")} on record, so not adjusted for ${s.adj.missing.length > 1 ? "those" : "it"}</div>` : ""}</td>
         <td class="n num">${money(s.price)}</td><td>${s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–"}</td>
         <td class="n num">${s.beds ?? "–"}</td><td class="n num">${s.baths ?? "–"}</td><td class="n num">${s.sqft ? s.sqft.toLocaleString() : "–"}</td>
-        <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${s.lot ? (s.lot >= 43560 ? (s.lot/43560).toFixed(2) + " ac" : s.lot.toLocaleString()) : "–"}</td><td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td></tr>`).join("")}</tbody>
+        <td class="n num">${s.sqft ? money2(s.price/s.sqft) : "–"}</td>${k.multi ? `<td class="n num">${s.units ?? "–"}</td><td class="n num">${s.units ? money(s.price/s.units) : "–"}</td>` : ""}<td class="n num">${fmtLot(s.lot)}</td><td class="n num">${s.yearBuilt ?? "–"}</td><td class="n num">${s.miles != null ? s.miles.toFixed(2) : "–"}</td>
+        <td class="n num" style="font-weight:600">${money(s.adj.adjusted)}</td><td class="n num" style="${s.adj.grossPct > 0.25 ? "color:var(--warn)" : ""}">${pctTxt(s.adj.grossPct)}</td></tr>`).join("")}</tbody>
     </table></div>` : `<p class="muted" style="margin-top:12px">${k.multi && others ? "No multifamily sales in this search." : "No recorded sales matched."} Try a bigger radius, a longer time window, or turn off a criterion.</p>`}
     ${A.sold.capped ? `<div class="banner warn" style="margin-top:12px">RentCast returned its limit of ${A.sold.cap} sales for one search, so some sales in this area may be missing. Use a smaller radius or shorter time window to see them all.</div>` : ""}
     ${k.multi && others ? `<div class="actions" style="margin-top:8px"><button class="link" id="btnShowOthers">${A.showAll ? "Show multifamily only" : `Show ${others} other sale${others === 1 ? "" : "s"} nearby (not multifamily)`}</button></div>` : ""}
     <div class="estimate">
-      <div class="stat key"><div class="label">Estimated value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override" : `${k.used.length} sale${k.used.length === 1 ? "" : "s"} · median ${money2(k.medPsf)}/sq ft${k.subj ? " × " + k.subj.toLocaleString() : ""}`) : "Tick the sales to compare above"}</div></div>
-      ${k.multi ? `<div class="stat"><div class="label">Per-unit check</div><div class="v">${money(k.perUnitEst)}</div><div class="small muted">${k.perUnitEst ? `Median ${money(k.medPerUnit)}/unit × ${totalUnits()} units` : k.used.length ? "None of the ticked sales list a unit count" : "Tick sales above"}</div></div>`
-        : `<div class="stat"><div class="label">Selected range</div><div class="v">${k.used.length ? money(k.low) + "–" + money(k.high).slice(1) : "–"}</div><div class="small muted">Sale prices</div></div>`}
+      <div class="stat key"><div class="label">Estimated value</div><div class="v">${money(k.final)}</div><div class="small muted">${k.used.length ? (num(A.override) != null ? "Your override (adjusted sales say " + money(k.est) + ")" : `${k.used.length} adjusted sale${k.used.length === 1 ? "" : "s"}, most similar weighted most`) : "Tick the sales to compare above"}</div></div>
+      <div class="stat"><div class="label">Adjusted range</div><div class="v">${k.used.length ? money(k.low) + "–" + money(k.high).slice(1) : "–"}</div><div class="small muted">${k.used.length ? (k.used.length < 3 ? "Use at least 3 sales for a reliable value" : "Ticked sales after adjustment") : "Tick sales above"}</div></div>
+      ${k.multi ? `<div class="stat"><div class="label">Per-unit check</div><div class="v">${money(k.perUnitEst)}</div><div class="small muted">${k.perUnitEst ? `Median ${money(k.medPerUnit)}/unit × ${totalUnits()} units` : k.used.length ? "None of the ticked sales list a unit count" : "Tick sales above"}</div></div>` : ""}
       <div class="stat ${vsDiff == null ? "" : vsDiff <= 0 ? "pass" : "fail"}"><div class="label">Price vs value</div><div class="v">${vsDiff == null ? "–" : (vsDiff <= 0 ? "−" : "+") + money(Math.abs(vsDiff))}</div><div class="small">${vsDiff == null ? (k.final == null ? "Tick sales to compare" : "Enter a price above") : vsDiff <= 0 ? "Price is under the estimated value" : "Price is over the estimated value"}</div></div>
     </div>
+    ${k.bracket && k.bracket !== "ok" ? `<div class="banner warn" style="margin-top:12px">Every ticked sale is ${k.bracket === "above" ? "smaller" : "larger"} than this property, so the value leans on the living-area adjustment. Tick at least one ${k.bracket === "above" ? "larger" : "smaller"} sale if there is one, so the comps bracket the subject.</div>` : ""}
+    ${k.used.some(s => s.outlier) ? `<p class="small muted" style="margin:8px 0 0">Some adjusted prices sit far from the rest (noted in the grid). That usually means a difference public records don't show, like condition, finishes or a busier street, so those sales get less weight. Look at them and untick any that aren't really comparable.</p>` : ""}
+    ${k.used.length && k.used.length - k.used.filter(s => s.adj.grossPct <= 0.25).length ? `<p class="small muted" style="margin:8px 0 0">Sales with gross adjustments over 25% (in orange) are less like this property; they still count, with less weight.</p>` : ""}
+    ${k.used.length ? `<h3 style="margin:18px 0 6px;font-size:15px">Adjustment grid</h3>
+    <p class="small muted" style="margin:0 0 6px">This property: ${esc(subjLine)}. Each sale is adjusted to what it would have sold for today if it matched this property: a plus means the sale is inferior, a minus means it's superior.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Sale</th><th class="n">Sold</th><th class="n">Market</th><th class="n">Living area</th><th class="n">Bedrooms</th><th class="n">Baths</th><th class="n">Age</th><th class="n">Lot</th><th class="n">Net</th><th class="n">Adjusted</th><th class="n">Weight</th></tr></thead>
+      <tbody>${[...k.used].sort((a,b) => b.weight - a.weight).map(s => `<tr><td class="addr">${esc(s.address.split(",")[0])}${s.outlier ? `<div class="small" style="color:var(--warn)">${Math.round(Math.abs(s.off)*100)}% ${s.off > 0 ? "above" : "below"} the other adjusted prices</div>` : ""}</td><td class="n num">${money(s.price)}</td>
+        ${["time","size","beds","baths","age","lot"].map(f => `<td class="n num">${sgn(s.adj[f])}</td>`).join("")}
+        <td class="n num">${sgn(s.adj.net)} <span class="muted">(${(s.adj.netPct*100).toFixed(0)}%)</span></td><td class="n num" style="font-weight:600">${money(s.adj.adjusted)}</td><td class="n num">${Math.round(s.weight*100)}%</td></tr>`).join("")}</tbody>
+    </table></div>` : ""}
+    <details style="margin-top:14px" ${A.ratesOpen ? "open" : ""} id="ratesBox"><summary style="cursor:pointer;font-weight:600">Adjustment rates</summary>
+      <p class="small muted" style="margin:6px 0 0">The living-area rate is measured from the ${k.model.pool} sales in this search (when there are at least 8); the others start from common appraisal rules. Type your own to replace any of them; clear a box to go back.</p>
+      <div class="grid" style="margin-top:10px">
+        ${rateField("trend", "Market trend (%/yr)", "0.5", "Starts at 0")}
+        ${rateField("gla", "Living area ($/sq ft)", "1", `Median sale is ${k.model.medPsf ? money2(k.model.medPsf) : "–"}/sq ft`)}
+        ${rateField("bed", "Per bedroom ($)", "500", "")}
+        ${rateField("bath", "Per full bath ($)", "500", "")}
+        ${rateField("year", "Age ($ per year)", "50", "")}
+        ${rateField("lot", "Lot (% per doubling)", "0.5", "")}
+      </div></details>
     <div class="grid" style="margin-top:12px"><div class="field"><label class="label" for="arv_override">Override value</label><input id="arv_override" data-arvov type="number" min="0" step="1000" placeholder="${k.est ?? ""}" value="${A.override ?? ""}"></div></div>`;
   renderFlip();
 }
@@ -1080,13 +1206,19 @@ $("arvResults").addEventListener("change", e => {
   S.arv.use[id] = e.target.checked; renderArv();
 });
 $("arvResults").addEventListener("input", e => {
-  if(e.target.dataset.arvov == null) return;
-  S.arv.override = e.target.value === "" ? "" : Number(e.target.value);
-  clearTimeout(rt); rt = setTimeout(() => { renderArv(); const el = $("arv_override"); el.focus(); const v = el.value; el.value = ""; el.value = v }, 450);
+  const t = e.target;
+  if(t.dataset.arvov != null) S.arv.override = t.value === "" ? "" : Number(t.value);
+  else if(t.dataset.rate) { S.arv.rates = S.arv.rates || {}; S.arv.rates[t.dataset.rate] = t.value === "" ? "" : Number(t.value) }
+  else return;
+  clearTimeout(rt); rt = setTimeout(() => {
+    const id = document.activeElement?.id; renderArv();
+    if(id && document.activeElement?.id !== id){ const el = $(id); if(el){ el.focus(); const v = el.value; el.value = ""; el.value = v } }
+  }, 450);
 });
+$("arvResults").addEventListener("toggle", e => { if(e.target.id === "ratesBox") S.arv.ratesOpen = e.target.open }, true);
 CRIT_KEYS.forEach(k => $("crit_" + k).addEventListener("change", () => readForm()));
 FLIP_FIELDS.forEach(f => $("flip_" + f).addEventListener("input", () => { readForm() }));
-ARV_FIELDS.forEach(f => $("arv_" + f).addEventListener("input", () => { readForm(); if(f === "rehab"){ clearTimeout(rt); rt = setTimeout(() => { renderArv(); renderResults() }, 300) } }));
+ARV_FIELDS.forEach(f => $("arv_" + f).addEventListener("input", () => { readForm(); if(f === "rehab"){ clearTimeout(rt); rt = setTimeout(() => { renderArv(); renderResults() }, 300) } else if(f === "lot") laterArv() }));
 
 // ---- deal math ----
 const num = v => v === "" || v == null || isNaN(v) ? null : Number(v);
@@ -1312,14 +1444,26 @@ function reportHTML(kind){
   const meets70 = a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null;
   const H3 = t => `<h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">${t}</h3>`;
   const soldYear = S.arv?.sold?.params?.yearText;
-  const salesTable = (note) => a.used.length ? `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="color:#5d6b63">${["Sold comparable","Sold","Date","Bd","Ba","Sq ft","$/sq ft"].concat(a.multi ? ["Units","$/unit"] : []).concat(lotOn ? ["Lot"] : []).concat(["Built"]).map((h,i)=>`<th style="padding:5px 6px;border-bottom:1px solid #999;text-align:${i && i !== 2 ? "right" : "left"}">${h}</th>`).join("")}</tr></thead>
-      <tbody>${a.used.map(s => `<tr>${[esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–", s.beds ?? "–", s.baths ?? "–", s.sqft ? s.sqft.toLocaleString() : "–", s.sqft ? money2(s.price/s.sqft) : "–"].concat(a.multi ? [s.units ?? "–", s.units ? money(s.price/s.units) : "–"] : []).concat(lotOn ? [s.lot ? (s.lot >= 43560 ? (s.lot/43560).toFixed(2) + " ac" : s.lot.toLocaleString()) : "–"] : []).concat([s.yearBuilt ?? "–"]).map((v,i)=>`<td style="padding:5px 6px;border-bottom:1px solid #ddd;text-align:${i && i !== 2 ? "right" : "left"};${i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
-    </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${note} ${S.arv?.sold?.params ? critSummary(S.arv.sold.params) : ""}</p>`
+  // Report version of the adjustment grid: one row per selected sale, most weight first.
+  const salesTable = (note) => a.used.length ? (() => {
+    const sg = v => v === 0 ? "0" : (v > 0 ? "+" : "−") + money(Math.abs(v)).slice(1);
+    const fmtLot = l => l ? (l >= 43560 ? (l/43560).toFixed(2) + " ac" : l.toLocaleString()) : "–";
+    const heads = ["Sold comparable","Sold","Date","Sq ft","Bd/Ba","Built"].concat(lotOn || a.used.some(s => s.adj.lot) ? ["Lot"] : []).concat(a.multi ? ["Units"] : []).concat(["Net adj.","Adjusted","Weight"]);
+    const showLot = heads.includes("Lot");
+    const rows = [...a.used].sort((x,y) => y.weight - x.weight).map(s => [esc(s.address), money(s.price), s.date ? new Date(s.date).toLocaleDateString("en-US",{month:"short",year:"numeric",timeZone:"UTC"}) : "–",
+      s.sqft ? s.sqft.toLocaleString() : "–", `${s.beds ?? "–"}/${s.baths ?? "–"}`, s.yearBuilt ?? "–"].concat(showLot ? [fmtLot(s.lot)] : []).concat(a.multi ? [s.units ?? "–"] : [])
+      .concat([`${sg(s.adj.net)} (${(s.adj.netPct*100).toFixed(0)}%)`, `<b>${money(s.adj.adjusted)}</b>`, Math.round(s.weight*100) + "%"]));
+    const subj = a.subj, subjRow = ["<b>This property</b>", "", "", subj.sqft ? subj.sqft.toLocaleString() : "–", `${subj.beds ?? "–"}/${subj.baths ?? "–"}`, subj.year ?? "–"].concat(showLot ? [fmtLot(subj.lot)] : []).concat(a.multi ? [totalUnits()] : []).concat(["", "", ""]);
+    const cell = (v,i,tag) => `<${tag} style="padding:5px 6px;border-bottom:1px solid ${tag === "th" ? "#999" : "#ddd"};text-align:${i && i !== 2 ? "right" : "left"};${tag === "td" && i && i !== 2 ? "font-family:'IBM Plex Mono',monospace" : ""}">${v}</${tag}>`;
+    return `<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="color:#5d6b63">${heads.map((h,i) => cell(h,i,"th")).join("")}</tr></thead>
+      <tbody><tr style="background:#f3f6f3">${subjRow.map((v,i) => cell(v,i,"td")).join("")}</tr>${rows.map(r => `<tr>${r.map((v,i) => cell(v,i,"td")).join("")}</tr>`).join("")}</tbody>
+    </table></div><p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">${note} ${S.arv?.sold?.params ? critSummary(S.arv.sold.params) : ""} Adjusted range ${money(a.low)}–${money(a.high).slice(1)}. Adjustments: ${ratesLine(a.R)}.${a.bracket && a.bracket !== "ok" ? ` All selected sales are ${a.bracket === "above" ? "smaller" : "larger"} than the subject.` : ""}</p>`;
+  })()
     : `<p style="font-size:13px;color:#5d6b63;margin:0">No sold comparables selected. Use Find sold homes and tick the sales to compare.</p>`;
   const arvSection = a.final == null ? "" : `<div class="rk"><h3 style="font:600 15px Archivo,Arial,sans-serif;margin:22px 0 8px">After-repair value</h3>
     <div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
-      ${arvStat("After-repair value", money(a.final), (num(S.arv.override) != null ? "Owner's estimate" : `Median ${money2(a.medPsf)}/sq ft of ${a.used.length} sales`) + (a.perUnitEst ? ` · per-unit check ${money(a.perUnitEst)}` : ""))}
+      ${arvStat("After-repair value", money(a.final), (num(S.arv.override) != null ? "Owner's estimate" : `${a.used.length} adjusted sales`) + (a.perUnitEst ? ` · per-unit check ${money(a.perUnitEst)}` : ""))}
       ${arvStat("Rehab budget", a.rehab != null ? money(a.rehab) : "–", a.allIn != null ? "All-in " + money(a.allIn) : "")}
       ${arvStat("Equity after rehab", a.equity == null ? "–" : (a.equity < 0 ? "−" : "") + money(Math.abs(a.equity)), a.equity != null && a.final ? signPct(a.equity / a.final * 100) + " of ARV" : "", a.equity == null ? null : a.equity >= 0 ? "#2f6b4f" : "#a3322a")}
       ${arvStat("70% rule max offer", money(a.maxOffer70), meets70 == null ? "70% of ARV minus rehab" : meets70 ? "Price is at or under it" : "Price is " + money(a.price - a.maxOffer70) + " over", meets70 == null ? null : meets70 ? "#2f6b4f" : "#9a5b00")}
@@ -1328,7 +1472,7 @@ function reportHTML(kind){
   const monthlyCost = m.mtg ? m.mtg.pi + (m.taxes || 0) / 12 + (m.insurance || 0) / 12 : null;
   const valueDiff = a.final != null && m.price != null ? m.price - a.final : null;
   const valueColor = valueDiff == null ? null : valueDiff <= 0 ? "#2f6b4f" : "#9a5b00";
-  const valueSub = a.final == null ? "Select comparable sales" : num(S.arv.override) != null ? "Owner's estimate" : `From ${a.used.length} comparable sale${a.used.length === 1 ? "" : "s"}`;
+  const valueSub = a.final == null ? "Select comparable sales" : num(S.arv.override) != null ? "Owner's estimate" : `From ${a.used.length} adjusted sale${a.used.length === 1 ? "" : "s"}`;
   const flipEquityColor = a.equity == null ? null : a.equity >= 0 ? "#2f6b4f" : "#a3322a";
   const meets70b = a.price != null && a.maxOffer70 != null ? a.price <= a.maxOffer70 : null;
   const fc = flipCalc();
@@ -1352,7 +1496,8 @@ function reportHTML(kind){
     <p style="font-size:11.5px;color:#5d6b63;margin:6px 0 0">Closing costs, utilities, maintenance and HOA fees not included.</p></div>`;
   const purchaseComps = `<div class="rk">${H3("Comparable sales")}
     ${a.final != null ? `<div class="row" style="display:flex;flex-wrap:wrap;gap:8px">
-      ${arvStat("Estimated value", money(a.final), valueSub + (a.medPsf && num(S.arv.override) == null ? ` · median ${money2(a.medPsf)}/sq ft` : ""))}
+      ${arvStat("Estimated value", money(a.final), valueSub)}
+      ${num(S.arv.override) == null && a.used.length ? arvStat("Adjusted range", money(a.low) + "–" + money(a.high).slice(1), "Selected sales after adjustment") : ""}
       ${a.perUnitEst ? arvStat("Per-unit check", money(a.perUnitEst), `Median ${money(a.medPerUnit)}/unit × ${totalUnits()} units`) : ""}
       ${arvStat("Asking $/sq ft", m.price && sumSqft ? money2(m.price/sumSqft) : "–", a.medPsf ? `Comps median ${money2(a.medPsf)}` : "")}
       ${arvStat("Price vs value", valueDiff == null ? "–" : (valueDiff <= 0 ? "−" : "+") + money(Math.abs(valueDiff)), valueDiff == null ? "Enter a price" : valueDiff <= 0 ? "Under estimated value" : "Over estimated value", valueColor)}
@@ -1381,7 +1526,7 @@ function reportHTML(kind){
     purchase: `${purchaseComps}${purchaseCost}`,
     flip: `${flipArv}`,
   };
-  const valueMethod = `${num(S.arv?.override) != null ? "Value entered by the owner. " : ""}Value is the median sale price per square foot of the selected sold comparables × the subject's living area${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}, rounded to the nearest $1,000. Sales are recorded transactions from public records via RentCast.`;
+  const valueMethod = `${num(S.arv?.override) != null ? "Value entered by the owner. " : ""}Sales comparison approach: each selected sale is adjusted for market change since it sold and for differences from the subject in living area${TYPES[S.ptype].units !== 1 ? " (whole building)" : ""}, bedrooms, bathrooms, age and lot size, at rates derived from the sales in the search where data allowed. Living area is adjusted at a marginal rate, not the full price per square foot. The adjusted prices are reconciled with the most weight on the closest sales needing the smallest gross adjustment, and less on any whose adjusted price is far from the rest, and rounded to the nearest $1,000. Sales are recorded transactions from public records via RentCast; condition and features not in public records are not adjusted.`;
   const methods = {
     rental: `Method: each selected comparable rental listing is adjusted for differences from the subject (${money(S.adj.bed)} per bedroom, ${money(S.adj.bath)} per bathroom, square footage at a marginal rate), then averaged with closer and more similar comps weighted higher, and rounded to the nearest $25. Comparable listings from RentCast. Estimates are opinions of market rent, not appraisals.`,
     purchase: `Method: ${valueMethod} Estimates are opinions of value, not appraisals.`,
